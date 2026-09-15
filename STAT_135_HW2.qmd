@@ -1,0 +1,118 @@
+---
+title: "STAT 135 HW2 R Calculations"
+author: "Yuan Xie"
+format: pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+```
+
+# 4. Problem 4.44
+
+## data import
+```{r}
+houses <- read_table("Houses.dat.txt")
+head(houses)
+```
+
+## (a)
+```{r}
+price <- houses$price
+
+mu_hat <- mean(price)
+
+sigma_hat <- sqrt(mean((price - mu_hat)^2))
+
+mu_hat
+sigma_hat
+```
+
+## (b)
+```{r}
+log_price <- log(price)
+
+mu_log_hat <- mean(log_price)
+
+sigma_log_hat <- sqrt(mean((log_price - mu_log_hat)^2))
+
+mu_log_hat
+sigma_log_hat
+```
+
+## (c)
+```{r}
+mean_log <- exp(mu_log_hat + sigma_log_hat^2 / 2)
+
+sd_log <- sqrt(
+  (exp(sigma_log_hat^2) - 1) *
+  exp(2 * mu_log_hat + sigma_log_hat^2)
+)
+
+mean_log
+sd_log
+```
+
+## (d)
+```{r}
+ggplot(houses, aes(x = price)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 20,
+                 fill = "white",
+                 color = "black") +
+  stat_function(
+    fun = dnorm,
+    args = list(mean = mu_hat, sd = sigma_hat),
+    aes(color = "Normal")
+  ) +
+  stat_function(
+    fun = dlnorm,
+    args = list(meanlog = mu_log_hat, sdlog = sigma_log_hat),
+    aes(color = "Log-normal")
+  ) +
+  labs(
+    title = "Normal and Log-normal Fits to Selling Prices",
+    x = "Selling Price (Thousands of Dollars)",
+    y = "Density",
+    color = "Distribution"
+  ) +
+  theme_minimal()
+```
+
+
+# 6
+
+## (c)
+```{r}
+log_likelihood <- function(theta) {
+  -3 * log(2) -
+    abs(theta + 2.354) -
+    abs(theta + 0.645) -
+    abs(theta - 2.039)
+}
+
+ggplot(data.frame(theta = c(-5, 5)), aes(x = theta)) +
+  stat_function(fun = log_likelihood) +
+  labs(
+    title = "Log-Likelihood Function",
+    x = expression(theta),
+    y = expression(L(theta))
+  ) +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+
+
+
