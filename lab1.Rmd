@@ -1,0 +1,519 @@
+---
+title: "Stat 135 Discussion Section 1"
+subtitle: "R Tutorial: Estimation, Random Sampling, and Parametric Models"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  fig.align = "center"
+)
+
+# This seed makes all simulated results reproducible.
+set.seed(13501)
+```
+
+# How to use this tutorial
+
+This tutorial combines statistical explanations with executable R code.
+Run the chunks in order because later chunks use objects created
+earlier. In RStudio, you can run a chunk using the green arrow at its
+upper-right corner or knit the entire document using **Knit**.
+
+The statistical code uses base R. The `knitr` package is used only to
+format tables and render the document.
+
+By the end of the tutorial, you should be able to:
+
+1.  explain why the mean of zero-one data equals the sample proportion;
+2.  draw a simple random sample without replacement;
+3.  use R's `d*`, `p*`, `q*`, and `r*` probability functions; and
+4.  compare simulated data with a theoretical density or probability
+    mass function.
+
+# Estimation with binary data
+
+## The mean of binary observations
+
+Suppose a researcher wants to estimate the proportion of voters in a
+city who support a new public transportation proposal.
+
+A random sample of $n=20$ voters is asked:
+
+“Do you support the proposal?”
+
+For voter $i$ in the sample, define
+
+$$
+X_i=
+\begin{cases}
+1, &\text{if observation $i$ is a success}\\
+0, &\text{otherwise}
+\end{cases}.
+$$
+
+Assume
+
+$$ 
+X_i \sim \operatorname{Bernoulli}(\pi), 
+$$
+
+where $\pi$ is the true proportion of all voters in the city who would
+vote Yes, and $X_i$s are independent of each other.
+
+Assume there are $k$ Yes votes out of $n$ voters in the sample, then the
+sample proportion is
+
+$$
+\hat \pi = \frac{k}{n}.
+$$
+
+$k=\sum_{i=1}^n X_i$ because each Yes vote contributes 1 to the sum and
+each No vote contributes 0. Then the sample mean is
+
+$$ \bar X=\frac{1}{n}\sum_{i=1}^n X_i=\frac{k}{n}=\widehat \pi. $$
+
+Thus, when binary outcomes are coded as 0 and 1, the sample mean is
+exactly the sample proportion.
+
+Suppose the observed responses are
+
+$(1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1)$.
+
+There are $k=14$ Yes votes out of $n=20$ voters in the sample.
+Therefore, the sample proportion is
+
+$$
+\hat \pi = \frac{k}{n} = \frac{14}{20} = 0.7.
+$$
+
+So 70% of the sampled voters support the proposal, and we use the sample
+proportion
+
+$\hat \pi = 0.7$
+
+to estimate the unknown proportion of all voters in the city who support
+the proposal (population proportion).
+
+```{r binary-data}
+x <- c(1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1)
+
+n <- length(x)
+pi_hat <- mean(x)
+
+x
+table(x)
+n
+pi_hat
+```
+
+## Variance of binary observations
+
+Suppose now we want to estimate the population variance. Consider a
+variance estimator:
+
+$$
+\widehat\sigma^2
+=\frac{1}{n}\sum_{i=1}^n(X_i-\bar X)^2.
+$$
+
+For binary data, $X_i^2=X_i$.
+
+$$
+\widehat\sigma^2=\widehat \pi(1-\widehat \pi).
+$$
+
+We can verify both the binary identity and the variance formula
+directly.
+
+```{r binary-variance}
+# For every zero-one observation, x^2 equals x.
+all(x^2 == x)
+
+# Variance estimate using divisor n.
+sigma2_hat_direct <- mean((x - mean(x))^2)
+
+# Bernoulli plug-in formula.
+sigma2_hat_binary <- pi_hat * (1 - pi_hat)
+
+c(
+  direct_calculation = sigma2_hat_direct,
+  bernoulli_shortcut = sigma2_hat_binary
+)
+```
+
+R's `var()` function uses divisor $n-1$:
+
+$$
+S^2=\frac{1}{n-1}\sum_{i=1}^n(X_i-\bar X)^2
+=\frac{n}{n-1}\widehat\sigma^2.
+$$
+
+```{r sample-variance}
+S2 <- var(x)
+S2_from_sigma2_hat <- n / (n - 1) * sigma2_hat_direct
+
+c(
+  R_var = S2,
+  converted_from_sigma2_hat = S2_from_sigma2_hat
+)
+```
+
+Under iid sampling, $S^2$ is unbiased for the population variance.
+
+# Simple random sampling without replacement
+
+## Define the finite population
+
+Consider the finite population
+
+$$
+1,\ 3,\ 3,\ 5,\ 8.
+$$
+
+The two observations equal to 3 are distinct population units even
+though their measured values are identical.
+
+```{r define-population}
+population <- c(1, 3, 3, 5, 8)
+N <- length(population)
+sample_size <- 3
+
+population_mean = mean(population)
+population_mean
+```
+
+## Draw one simple random sample
+
+In a simple random sample of size $n$ without replacement, every subset
+of $n$ distinct population units has the same probability.
+
+```{r one-srs}
+one_sample <- sample(
+  population,
+  size = sample_size,
+  replace = FALSE
+)
+
+one_sample
+c(
+  sample_mean = mean(one_sample),
+  sample_variance = var(one_sample)  # var() uses divisor $n-1$
+)
+```
+
+Running the chunk again generally produces a different sample. The
+argument `replace = FALSE` prevents a population unit from being
+selected more than once.
+
+> **Think:** What would change if `replace = TRUE`? Could the same
+> population unit appear more than once?
+
+## Enumerate all possible samples
+
+There are
+
+$$
+\binom{5}{3}=10
+$$
+
+equally likely unordered samples. We enumerate indices rather than
+values so that the two population units with value 3 remain
+distinguishable.
+
+```{r enumerate-samples}
+index_samples <- combn(seq_along(population), sample_size)
+
+sample_values <- apply(
+  index_samples,
+  MARGIN = 2,
+  function(ind) population[ind]
+)
+
+sample_means <- colMeans(sample_values)
+sample_medians <- apply(sample_values, MARGIN = 2, median)
+
+sample_table <- data.frame(
+  sample = apply(sample_values, 2, paste, collapse = ", "),
+  mean = sample_means,
+  median = sample_medians
+)
+
+sample_table
+```
+
+## Sampling distributions
+
+Because all ten samples are equally likely, each row of the preceding
+table has probability (1/10). We can aggregate rows that produce the
+same statistic.
+
+```{r exact-sampling-distributions}
+
+mean_distribution <- as.data.frame(
+  prop.table(table(sample_means))
+)
+
+mean_distribution$sample_means <-
+  as.numeric(as.character(mean_distribution$sample_means))
+
+knitr::kable(
+  as.data.frame(mean_distribution),
+  col.names = c("Sample mean", "Probability"),
+  digits = 4,
+  caption = "Sampling distribution of the sample mean"
+)
+
+
+median_distribution <- as.data.frame(
+  prop.table(table(sample_medians))
+)
+median_distribution$sample_medians <-
+  as.numeric(as.character(median_distribution$sample_medians))
+
+
+knitr::kable(
+  as.data.frame(median_distribution),
+  col.names = c("Sample median", "Probability"),
+  digits = 4,
+  caption = "Sampling distribution of the sample median"
+)
+```
+
+The exact sampling distribution of the sample mean is
+
+$$
+\begin{array}{c|cccccc}
+\bar X & 7/3 & 3 & 11/3 & 4 & 14/3 & 16/3\\ \hline
+\Pr(\bar X=x) & 1/10 & 2/10 & 1/10 & 2/10 & 2/10 & 2/10.
+\end{array}
+$$
+
+The sample median equals 3 with probability (7/10) and 5 with
+probability (3/10).
+
+## Expected value and standard error of the sample mean
+
+The expected value is the probability-weighted average of the possible
+values.
+
+```{r sample-mean-se}
+mean_of_sample_means <- mean(sample_means)
+
+# These ten values are the complete distribution, so use divisor 10.
+var_of_sample_means <- mean(
+  (sample_means - mean_of_sample_means)^2
+)
+se_of_sample_means <- sqrt(var_of_sample_means)
+
+c(
+  E_Xbar = mean_of_sample_means,
+  Var_Xbar = var_of_sample_means,
+  SE_Xbar = se_of_sample_means
+)
+```
+
+Thus,
+
+$$
+\operatorname{E}(\bar X)=4,\qquad
+\operatorname{Var}(\bar X)=\frac{14}{15},\qquad
+\operatorname{SE}(\bar X)=\sqrt{\frac{14}{15}}\approx0.9661.
+$$
+
+Do not use `sd(sample_means)` for the exact standard error of sample
+means. The ten values are the entire distribution, whereas `sd()` uses
+divisor (10-1), treating them as a sample from a larger population.
+
+## Simulation
+
+When exact enumeration is impractical, repeated random sampling can
+approximate the sampling distribution.
+
+```{r simulate-sample-means}
+set.seed(13501)
+B <- 10000
+
+sim_sample_means <- replicate(
+  B,
+  mean(sample(population, size = 3, replace = FALSE))
+)
+
+c(
+  mean_of_sim_sample_means = mean(sim_sample_means),
+  sd_of_sim_sample_means = sd(sim_sample_means)
+)
+```
+
+Each value in `sim_sample_means` is one statistic computed from an
+entire random sample. Their histogram approximates the sampling
+distribution of $\bar X$.
+
+## Population distribution versus sampling distribution
+
+The first plot contains individual population values. The second
+contains statistics—one sample mean for each simulated sample.
+
+```{r compare-histograms, fig.show='hold', out.width='49%'}
+par(mfrow = c(1, 2))
+hist(population, main = "Population values", xlab = "Value")
+abline(v = mean(population), col = "firebrick", lwd = 3)
+hist(sim_sample_means, probability = TRUE, main = "Simulated sampling distribution \nof the sample mean", xlab = "Sample mean")
+abline(v = mean(population), col = "firebrick", lwd = 3)
+par(mfrow = c(1, 1))
+```
+
+> **Think:** What does one value in the left histogram represent? What
+> does one value in the right histogram represent?
+
+## Binary population example
+
+Now consider a finite population containing 40 ones and 60 zeros. Its
+population proportion is 0.40. We randomly sample 20 units without
+replacement.
+
+```{r binary-population}
+binary_population <- c(rep(1, 40), rep(0, 60))
+
+p_population = mean(binary_population)
+
+N_binary <- length(binary_population)
+n_binary <- 20
+
+one_binary_sample <- sample(
+  binary_population,
+  size = n_binary,
+  replace = FALSE
+)
+
+one_binary_sample
+c(
+  population_proportion = mean(binary_population),
+  sample_proportion = mean(one_binary_sample),
+  population_variance = p_population * (1 - p_population),
+  sample_variance = var(one_binary_sample)  # var() uses divisor $n-1$
+)
+```
+
+```{r plot-binary-sampling-distribution}
+B_binary <- 10000
+
+sim_sample_proportions <- replicate(
+  B_binary,
+  mean(sample(
+    binary_population,
+    size = n_binary,
+    replace = FALSE
+  ))
+)
+hist(
+  sim_sample_proportions,
+  probability = TRUE,
+  main = "Simulated sampling distribution of sample proportion",
+  xlab = "Sample proportion"
+)
+abline(v = p_population, col = "firebrick", lwd = 3)
+```
+
+# Parametric probability models in R
+
+## The `d*`, `p*`, `q*`, and `r*` convention
+
+For a distribution named `xxx`, R usually provides four related
+functions:
+
+| Function       | Meaning                                  |
+|:---------------|:-----------------------------------------|
+| `dxxx(x, ...)` | Density value or probability mass at `x` |
+| `pxxx(q, ...)` | Cumulative probability $\Pr(X\le q)$     |
+| `qxxx(p, ...)` | The $p$-quantile, or inverse CDF         |
+| `rxxx(n, ...)` | `n` random draws                         |
+
+For a **continuous** distribution, `dxxx(x)` is a density value, not
+$\Pr(X=x)$; the probability at one exact point is zero, $\Pr(X=x) = 0$.
+For a **discrete** distribution, `dxxx(x)` is the probablity mass at
+$x$, $\Pr(X=x)$.
+
+## Normal distribution
+
+If $X\sim\mathcal N(\mu,\sigma^2)$, then $X$ is continuous random
+variable with mean $\mu$ and variance $\sigma^2$.
+
+```{r normal-probabilities}
+c(
+  P_Z_le_1.96 = pnorm(1.96),
+  q_0.975 = qnorm(0.975)
+)
+```
+
+$\Phi(1.96)\approx0.975$ and $\Phi^{-1}(0.975)\approx1.96$ .
+
+```{r normal-simulation}
+normal_draws <- rnorm(10000, mean = 10, sd = 2)
+
+hist(
+  normal_draws,
+  probability = TRUE,
+  main = "Normal simulation with density overlay",
+  xlab = "x",
+  col = "gray85",
+  border = "white"
+)
+
+curve(
+  dnorm(x, mean = 10, sd = 2),
+  from = 2,
+  to = 18,
+  add = TRUE,
+  col = "firebrick",
+  lwd = 3
+)
+```
+
+The histogram must use `probability = TRUE` so that its vertical scale
+matches the theoretical density.
+
+> **Think:** Is `dnorm(10, mean = 10, sd = 2)` a probability? What is
+> $\Pr(X=10)$ for this continuous distribution?
+
+## Bernoulli distribution
+
+A Bernoulli variable takes values 0 and 1. For
+$X\sim \text{Bernoulli}(p)$,
+
+$$
+\operatorname{E}(X)=p,\qquad
+\operatorname{Var}(X)=p(1-p).
+$$
+
+Base R represents $\text{Bernoulli}(p)$ as a Binomial distribution with
+`size = 1`.
+
+```{r bernoulli-model}
+p <- 0.30
+
+dbinom(0:1, size = 1, prob = p)
+
+c(
+  theoretical_mean = p,
+  theoretical_variance = p * (1 - p)
+)
+
+bernoulli_draws <- rbinom(10000, size = 1, prob = p)
+
+c(
+  simulated_mean = mean(bernoulli_draws),
+  simulated_variance = var(bernoulli_draws)
+)
+```

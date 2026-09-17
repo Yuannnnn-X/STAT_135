@@ -1,0 +1,445 @@
+---
+title: "Maximum Likelihood Estimation: Poisson and Exponential"
+author: "STAT 135 Lab 2"
+date: "Fall 2026"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## 1. The Poisson Model (Asbestos Counts)
+
+**Step 1: Decide on Parametric Model**
+We have a dataset of asbestos fiber counts from 23 grid squares, collected during a study by the National Institute of Science and Technology. We must *choose* how to model this data. Because it represents counts of events in a fixed spatial area, we decide to model the data $X_1, \dots, X_n$ as \textit{i.i.d.} $\text{Poisson}(\lambda)$. We assume independence between individual grid square counts and a constant average concentration rate across all observed grid squares.
+
+**Question:** A key property of the Poisson distribution is that its mean equals its variance ($\mathbb{E}[X] = \text{Var}(X) = \lambda$). What alternative distribution might you consider if the observed variance across the grid squares turns out to be substantially larger than the sample mean (overdispersion)?
+
+**Question:** Would modeling the data using a binomial distribution make sense in this setting?
+
+```{r poisson-data}
+# Data from Steel et al. 1980 (National Institute of Science and Technology)
+asbestos_counts <- c(31, 29, 19, 18, 31, 28, 
+                     34, 27, 34, 30, 16, 18, 
+                     26, 27, 27, 18, 24, 22, 
+                     28, 24, 21, 17, 24)
+n_pois <- length(asbestos_counts)
+```
+
+**Step 2: Calculate Likelihood & Log-Likelihood**
+
+The Probability Mass Function (PMF) for an individual observation $x_i \in \{0, 1, 2, \dots\}$ is:
+$$f(x_i; \lambda) = P(X_i = x_i) = \frac{\lambda^{x_i} e^{-\lambda}}{x_i!}$$
+
+Under the assumption that our observations $X_1, \dots, X_n$ are independent and identically distributed, the **likelihood function** is the joint probability evaluated at the observed data vector $(x_1, \dots, x_n)$ as a function of the unknown parameter $\lambda$:
+$$L(\lambda | x_1 \dots x_n) = \prod_{i=1}^n f(x_i; \lambda) = \prod_{i=1}^n \frac{\lambda^{x_i} e^{-\lambda}}{x_i!} = \frac{\lambda^{\sum_{i=1}^n x_i} e^{-n\lambda}}{\prod_{i=1}^n x_i!}$$
+Here, we plot the Probability Mass Function (PMF) side-by-side with the Likelihood function. Notice the axes:
+
+* **PMF**: Function of the data $x$, with the parameter $\lambda$ fixed.
+* **Likelihood**: Function of the parameter $\lambda$, with the data $x$ fixed.
+
+```{r poisson-pmf-vs-lik, fig.width=10, fig.height=4}
+par(mfrow=c(1,2))
+
+# Plotting the PMF (Fixed Lambda, Varying X)
+lambda_fixed <- mean(asbestos_counts) # Using sample mean for demonstration
+x_vals <- 5:45
+pmf_vals <- dpois(x_vals, lambda_fixed)
+
+plot(x_vals, pmf_vals, type="h", lwd=3, col="blue",
+     main=paste("PMF: Poisson (lambda =", round(lambda_fixed, 2), ")"),
+     xlab="x (Data)", ylab="P(X = x)")
+points(x_vals, pmf_vals, pch=16, col="blue")
+
+# Calculate the likelihood as a function of lambda
+lik_pois <- function(lambda) {
+  prod(dpois(asbestos_counts, lambda))
+}
+# Plotting the Likelihood (Fixed Data, Varying Lambda)
+lambda_grid <- seq(15, 35, by=0.1)
+lik_vals <- sapply(lambda_grid, lik_pois)
+
+plot(lambda_grid, lik_vals, type="l", lwd=2, col="red",
+     main="Likelihood Function (Given Data)",
+     xlab=expression(lambda~" (Parameter)"), ylab="L("~lambda~" | Data)")
+```
+
+Now, let's look at the Likelihood vs. the Log-Likelihood. Maximizing one maximizes the other!
+
+```{r poisson-lik-vs-loglik, fig.width=10, fig.height=4}
+par(mfrow=c(1,2))
+
+log_lik_pois <- function(lambda) {
+  sum(dpois(asbestos_counts, lambda, log=TRUE))
+}
+log_lik_vals <- sapply(lambda_grid, log_lik_pois)
+
+# Likelihood
+plot(lambda_grid, lik_vals, type="l", lwd=2, col="red",
+     main="Likelihood Function",
+     xlab=expression(lambda), ylab="L("~lambda~" | Data)")
+abline(v = mean(asbestos_counts), lty=2)
+
+# Log-Likelihood
+plot(lambda_grid, log_lik_vals, type="l", lwd=2, col="darkgreen",
+     main="Log-Likelihood Function",
+     xlab=expression(lambda), ylab="l("~lambda~" | Data)")
+abline(v = mean(asbestos_counts), lty=2)
+```
+
+**Exercise:** Derive the log-likelihood function, $\ell(\lambda) = \log L(\lambda \mid x_1, \dots, x_n)$, for an i.i.d. $\text{Poisson}(\lambda)$ sample.
+
+**Note:** Throughout this lab, "log" always refers to the natural logarithm, base $e$ or $\ln$.
+
+**Step 3 & 4: Find Maximum & Plug in Data**
+
+Differentiating the log-likelihood and setting it to zero shows that the maximum occurs at the sample mean.
+
+Our MLE estimate is $\widehat{\lambda} = \bar{X}$.
+
+```{r poisson-estimate}
+lambda_hat <- mean(asbestos_counts)
+cat("The MLE estimate for lambda is:", lambda_hat, "\n")
+```
+
+---
+
+## 2. The Exponential Model (Simulated Data & Parameter Analysis)
+
+The Probability Density Function (PDF) for an individual continuous observation $x_i > 0$ is:
+$$f(x_i; \theta) = \theta e^{-\theta x_i}$$
+
+Under the assumption of an independent and identically distributed sample, the **likelihood function** is the joint density evaluated at the observed data vector $(x_1, \dots, x_n)$ as a function of the unknown rate parameter $\theta$:
+$$L(\theta | X_1 \dots X_n) = \prod_{i=1}^n f(x_i; \theta) = \prod_{i=1}^n \left( \theta e^{-\theta x_i} \right) = \theta^n \exp\left(-\theta \sum_{i=1}^n x_i\right)$$
+
+Taking the natural logarithm gives the **log-likelihood function**:
+$$\ell(\theta | X_1 \dots X_n) = \log L(\theta) = n\log(\theta) - \theta \sum_{i=1}^n x_i$$
+
+Here, we plot the Probability Density Function (PDF) side-by-side with the Likelihood function. Notice the axes:
+
+* **PDF**: Function of the data $x$, with the parameter $\theta$ fixed.
+* **Likelihood**: Function of the parameter $\theta$, with the data $x$ fixed.
+
+```{r exp-pdf-vs-lik, fig.width=10, fig.height=4}
+par(mfrow = c(1, 2))
+
+# Using simulated exponential data for demonstration
+set.seed(135)
+sample_exp_demo <- rexp(25, rate = 2.0)
+theta_fixed <- 1 / mean(sample_exp_demo)
+
+# Plotting the PDF (Fixed Theta, Varying X)
+x_vals_exp <- seq(0, 3, length.out = 200)
+pdf_vals <- dexp(x_vals_exp, rate = theta_fixed)
+
+plot(x_vals_exp, pdf_vals, type = "l", lwd = 2.5, col = "blue",
+     main = paste("PDF: Exponential (theta =", round(theta_fixed, 2), ")"),
+     xlab = "x (Data)", ylab = "f(x | theta)")
+
+# Plotting the Likelihood (Fixed Data, Varying Theta)
+lik_exp <- function(theta) {
+  prod(dexp(sample_exp_demo, rate = theta))
+}
+theta_grid <- seq(0.5, 4.5, by = 0.01)
+lik_vals_exp <- sapply(theta_grid, lik_exp)
+
+plot(theta_grid, lik_vals_exp, type = "l", lwd = 2.5, col = "red",
+     main = "Likelihood Function (Given Data)",
+     xlab = expression(theta ~ " (Parameter)"), ylab = "L(" ~ theta ~ " | Data)")
+```
+
+Next, we simulate exponential data to examine how the likelihood function shifts both when the true parameter ($\theta$) changes and when the sample size changes.  
+
+### Part A: Effect of Different True Parameters ($\theta$)
+
+Let's see how the likelihood function shifts position when data is generated from different true parameters using a fixed sample size ($n = 30$).
+
+```{r exp-diff-params}
+set.seed(135)
+n_fixed <- 30
+true_theta_1 <- 1.0
+true_theta_2 <- 2.5
+
+# Note: In R's dexp/rexp, the 'rate' argument corresponds to our parameter theta
+data_theta1 <- rexp(n_fixed, rate = true_theta_1)
+data_theta2 <- rexp(n_fixed, rate = true_theta_2)
+
+log_lik_exp <- function(theta, data) {
+  sum(dexp(data, rate=theta, log=TRUE))
+}
+
+theta_grid_exp <- seq(0.1, 4, by=0.02)
+
+ll_theta1 <- sapply(theta_grid_exp, log_lik_exp, data=data_theta1)
+ll_theta2 <- sapply(theta_grid_exp, log_lik_exp, data=data_theta2)
+
+plot(theta_grid_exp, ll_theta1 - max(ll_theta1), type="l", col="purple", lwd=2,
+     main="Likelihood Function Shifts with Different True Parameters",
+     xlab=expression(theta), ylab="Scaled Log-Likelihood")
+lines(theta_grid_exp, ll_theta2 - max(ll_theta2), col="orange", lwd=2)
+abline(v = true_theta_1, lty=2, lwd=2, col="purple")
+abline(v = true_theta_2, lty=2, lwd=2, col="orange")
+legend("topright", legend=c("True Theta = 1.0", "True Theta = 2.5"),
+       col=c("purple", "orange"), lwd=2)
+```
+
+### Part B: Effect of Different Sample Sizes
+
+Next, holding the true parameter constant ($\theta = 2$), we look at how larger sample sizes cause the likelihood to become more concentrated near its maximum. 
+
+```{r exp-sim-data}
+set.seed(135)
+true_theta <- 2
+
+# Simulating two datasets of different sizes
+n_small <- 10
+n_large <- 1000
+
+data_small <- rexp(n_small, rate = true_theta)
+data_large <- rexp(n_large, rate = true_theta)
+```
+
+Let's look at how sample size concentrates the likelihood function around the true parameter.
+
+```{r exp-concentration, fig.width=8, fig.height=5}
+# Calculate log-likelihoods over the grid
+ll_small <- sapply(theta_grid_exp, log_lik_exp, data=data_small)
+ll_large <- sapply(theta_grid_exp, log_lik_exp, data=data_large)
+
+# Scale them so we can plot them on the same axis easily for shape comparison
+# We subtract the max to shift the peak to 0
+ll_small_scaled <- ll_small - max(ll_small)
+ll_large_scaled <- ll_large - max(ll_large)
+
+plot(theta_grid_exp, ll_small_scaled, type="l", col="blue", lwd=2,
+     main="Concentration of Log-Likelihood by Sample Size",
+     xlab=expression(theta), ylab="Scaled Log-Likelihood")
+lines(theta_grid_exp, ll_large_scaled, col="red", lwd=2)
+abline(v = true_theta, lty=2, lwd=2)
+legend("bottomright", legend=c("n = 10", "n = 1000", "True Theta"),
+       col=c("blue", "red", "black"), lty=c(1, 1, 2), lwd=2)
+```
+
+Notice how much more heavily concentrated (sharper peak) the red curve ($n = 1000$) is around the true value compared to the blue curve ($n = 10$).
+
+**Comparing Estimates to Truth:**
+The MLE for the exponential parameter is $\widehat{\theta} = \frac{1}{\bar{X}}$.
+
+```{r exp-estimates}
+est_small <- 1 / mean(data_small)
+est_large <- 1 / mean(data_large)
+
+cat("True Theta:", true_theta, "\n")
+cat("Estimate (n=10):", est_small, "\n")
+cat("Estimate (n=1000):", est_large, "\n")
+```
+
+### Part C: Sample-to-Sample Variation in the Maximum
+
+A core property of the MLE is consistency: as sample size grows, the estimator converges to the true parameter value, meaning the maximum of the likelihood function varies very little across different random samples from the same population.
+
+To see this behavior, we simulate multiple independent datasets (replications) under both a small sample size ($n = 10$) and a large sample size ($n = 1000$), keeping the true rate parameter fixed at $\theta = 2$.
+
+```{r sim-replicates-setup}
+set.seed(135)
+n_reps <- 5
+true_theta <- 2
+theta_grid_exp <- seq(0.5, 4.5, by = 0.02)
+```
+
+**Small Sample Size ($n = 10$):**
+Notice how the individual likelihood curves shift significantly along the x-axis, and the resulting maximums ($\widehat{\theta} = 1 / \bar{X}$) bounce around widely from one realization to the next.
+
+```{r sim-replicates-small, fig.width=7, fig.height=4}
+plot(theta_grid_exp, rep(0, length(theta_grid_exp)), type = "n", 
+     ylim = c(-15, 0), xlab = expression(theta), ylab = "Scaled Log-Likelihood",
+     main = "n = 10: Substantial Variation Across Samples")
+
+palette_cols <- c("firebrick", "dodgerblue", "darkgreen", "darkorange", "purple4")
+for (i in 1:n_reps) {
+  sample_data <- rexp(10, rate = true_theta)
+  ll <- sapply(theta_grid_exp, log_lik_exp, data = sample_data)
+  lines(theta_grid_exp, ll - max(ll), col = palette_cols[i], lwd = 2)
+  abline(v = 1 / mean(sample_data), col = palette_cols[i], lty = 3, lwd = 4)
+}
+abline(v = true_theta, lwd = 2, lty = 2)
+legend("bottomright", legend = c("Replicate Likelihoods", "True Theta"),
+       col = c("purple", "black"), lty = c(1, 2), lwd = c(2, 2))
+```
+
+**Large Sample Size ($n = 1000$):**
+With a larger sample size, two things happen simultaneously: each likelihood curve becomes noticeably sharper around its peak, and the sample-to-sample estimates tightly cluster directly around the true parameter line ($\theta = 2$).
+
+```{r sim-replicates-large, fig.width=7, fig.height=4}
+plot(theta_grid_exp, rep(0, length(theta_grid_exp)), type = "n", 
+     ylim = c(-15, 0), xlab = expression(theta), ylab = "Scaled Log-Likelihood",
+     main = "n = 1000: Minimal Variation Across Samples")
+
+palette_cols <- c("firebrick", "dodgerblue", "darkgreen", "darkorange", "purple4")
+for (i in 1:n_reps) {
+  sample_data <- rexp(1000, rate = true_theta)
+  ll <- sapply(theta_grid_exp, log_lik_exp, data = sample_data)
+  lines(theta_grid_exp, ll - max(ll), col = palette_cols[i], lwd = 2)
+  abline(v = 1 / mean(sample_data), col = palette_cols[i], lty = 3, lwd = 4)
+}
+abline(v = true_theta, lwd = 2, lty = 2)
+legend("bottomright", legend = c("Replicate Likelihoods", "True Theta"),
+       col = c("purple", "black"), lty = c(1, 2), lwd = c(2, 2))
+```
+
+---
+
+### Part D: Optimizing the Likelihood (Calculus and Curvature)
+
+To find the MLE, we use calculus to maximize the log-likelihood function. Let us visualize the geometry of this optimization for an observed sample of exponential data.
+
+```{r exp-calculus-curvature, fig.width=8, fig.height=5}
+# Generate a representative sample
+set.seed(42)
+sample_exp <- rexp(25, rate = 2.0)
+mle_exp <- 1 / mean(sample_exp)
+
+# Grid of theta values
+theta_eval <- seq(0.5, 4.5, by = 0.01)
+log_lik_curve <- sapply(theta_eval, log_lik_exp, data = sample_exp)
+
+# Plot log-likelihood curve
+plot(theta_eval, log_lik_curve, type = "l", lwd = 2.5, col = "navy",
+     main = "Geometry of the Maximum: Zero Slope and Negative Curvature",
+     xlab = expression(theta), ylab = expression(l(theta)))
+
+# Tangent line at the maximum (slope = 0)
+max_val <- log_lik_exp(mle_exp, sample_exp)
+points(mle_exp, max_val, pch = 19, col = "firebrick", cex = 1.4)
+abline(h = max_val, lty = 2, col = "firebrick", lwd = 1.5)
+abline(v = mle_exp, lty = 3, col = "gray40", lwd = 4)
+
+# Annotations
+text(mle_exp + 0.6, max_val - 3, 
+     labels = bquote(widehat(theta)[MLE] == .(round(mle_exp, 3))), 
+     col = "black")
+text(mle_exp + 0.8, max_val + 1, 
+     labels = "Horizontal Tangent: l'("~theta~" | Data) = 0", 
+     col = "firebrick", cex = 0.9)
+```
+
+**Discussion Questions:**
+
+* **The First-Derivative Test:**
+  * Looking at the tangent line above, what is the geometric meaning of setting $\frac{d}{d\theta} \ell(\theta) = 0$?
+  * Does finding a point where the first derivative equals zero guarantee that we have found a maximum, or could it represent something else?
+
+* **Curvature and Second Derivatives:**
+  * For the Exponential log-likelihood $\ell(\theta) = n\log(\theta) - \theta \sum_{i=1}^n X_i$, the second derivative is:
+    $$\frac{d^2}{d\theta^2} \ell(\theta) = -\frac{n}{\theta^2}$$
+  * What is the sign of this second derivative for all valid $\theta > 0$? 
+  * Why does a strictly negative second derivative assure us that the peak is a *global* maximum, eliminating concerns about local optima?
+
+* **When Calculus Breaks Down:**
+  * This calculus optimization assumes that the log-likelihood is smooth and differentiable everywhere. What would happen if our likelihood had a sharp corner (like an absolute value function / $L_1$ loss), or if the support of the distribution depended on the parameter itself (like $U(0, \theta)$)?
+  * Does the absence of a zero derivative mean no maximum exists, or does it mean we need a different maximization strategy?
+  
+### When Calculus Fails: Non-Differentiability and $L_1$ Loss
+
+Setting the derivative equal to zero only works when the likelihood function is differentiable everywhere. When a function has sharp corners or boundaries, an optimum can still exist even if no zero derivative can be found via standard calculus.
+
+```{r non-diff-plot, fig.width=6, fig.height=3.5}
+# Illustrating non-differentiability with the absolute value function |theta|
+theta_vals <- seq(-3, 3, length.out = 300)
+loss_vals <- abs(theta_vals)
+
+plot(theta_vals, loss_vals, type = "l", lwd = 2.5, col = "darkred",
+     main = expression("Non-Differentiable Minimum: " * f(theta) == abs(theta)),
+     xlab = expression(theta), ylab = expression(abs(theta)))
+points(0, 0, pch = 19, col = "black", cex = 1.3)
+abline(v = 0, lty = 3, col = "gray50")
+text(0, 0.5, "Sharp minimum at 0\n(Derivative undefined)", pos = 4, cex = 0.85)
+```
+
+* **Takeaway:** A function does not need to be differentiable to have an optimum. At $\theta = 0$, the absolute value function clearly achieves its minimum, but $\frac{d}{d\theta}\vert{}\theta\vert{}$ does not exist at that point.
+* **Connection to $L_1$ Loss:** This behavior occurs in $L_1$ loss optimization ($\sum \vert{}x_i - \theta\vert{}$), as well as distributions with bounded support like $U(0, \theta)$ where the boundary depends on the parameter.
+
+### Estimator vs. Estimate
+
+In statistical inference, we must formally distinguish between an **estimator** (a statistic defined as a function of the random variables) and an **estimate** (the fixed numerical value obtained by evaluating that function on an observed sample):
+
+* **Estimator (The Statistic):** A function of the random sample $X_1, \dots, X_n$:
+  $$\widehat{\theta}(X_1, \dots, X_n) = \frac{1}{\bar{X}} = \frac{n}{\sum_{i=1}^n X_i}$$
+  Because it depends on random variables, $\widehat{\theta}$ is itself a random variable endowed with a sampling distribution, mean, and variance. The data arguments are written with capital letters ($X_i, \bar{X}$) to reflect that the estimator is a function of unobserved random variables before the experiment is run.
+
+* **Estimate (The Realization):** The fixed numerical value obtained when the estimator is evaluated on a concrete, observed data vector $(x_1, \dots, x_n)$:
+  $$\widehat{\theta}_{\text{obs}} = \frac{1}{\bar{x}} = \frac{n}{\sum_{i=1}^n x_i}$$
+  An estimate is a fixed constant with no sampling variability, written with lowercase letters ($x_i, \bar{x}$) to denote specific, realized numbers recorded from the experiment.
+
+```{r compare-estimates}
+# True population rate
+true_theta <- 2.0
+
+# Generate one small sample (n = 10) and one large sample (n = 1000)
+set.seed(42)
+sample_10  <- rexp(10, rate = true_theta)
+sample_1000 <- rexp(1000, rate = true_theta)
+
+# Plug observed sample data into our estimator rule to obtain concrete estimates
+est_10  <- 1 / mean(sample_10)
+est_1000 <- 1 / mean(sample_1000)
+
+cat("True parameter (theta):", true_theta, "\n")
+cat("Estimate with n = 10:   ", round(est_10, 3), "\n")
+cat("Estimate with n = 1000:  ", round(est_1000, 3), "\n")
+```
+
+---
+
+## 3. Attendance Question: Evaluating Model Assumptions
+
+**Question:**
+In the exponential example, what problem would you have with your MLE estimator if you had the following data?
+$X_1 = 1, X_2 = 0, X_3 = 3, X_4 = 2, X_5 = -6$?
+
+**Analysis:**
+If we naively apply our plug-in formula $\widehat{\theta} = \frac{1}{\bar{X}}$, we immediately encounter an undefined result because the sample mean sums to zero ($\bar{X} = \frac{1 + 0 + 3 + 2 - 6}{5} = 0$). 
+
+However, the fundamental breakdown occurs at the modeling stage: **an exponential distribution is only defined on strictly positive values, so it cannot generate negative data**.
+
+**The Indicator Function:**
+To capture the valid domain of a distribution mathematically, we use an **indicator function** $I(\cdot)$ directly in the density:
+$$f(x) = \theta \exp(-\theta x) I(x > 0), \quad \text{where } I(x > 0) = \begin{cases} 1 & \text{if } x > 0 \\ 0 & \text{if } x \le 0 \end{cases}$$
+
+When we write out the joint likelihood for the full sample, the individual indicators multiply together:
+$$\ell(\theta) = \prod_{i=1}^n \Big(\theta \exp(-\theta X_i) I(X_i > 0)\Big) = I(\text{all } X_i > 0) \prod_{i=1}^n \theta \exp(-\theta X_i)$$
+
+* Because $X_5 = -6 \le 0$, the condition "$\text{all } X_i > 0$" fails, so $I(\text{all } X_i > 0) = 0$.
+* Consequently, the likelihood is **identically 0 for every candidate value of $\theta$**, meaning no maximum exists.
+* This makes sense: observing negative values is impossible under an exponential model, yielding zero likelihood.
+
+### Why Indicators Matter: The $\text{Uniform}(0, \theta)$ Example
+
+Including indicators is not just formal bookkeeping; it is essential whenever a parameter restricts the support (boundaries) of the distribution. In these cases, standard calculus fails, and the indicator function is what determines the MLE.
+
+Consider a sample $X_1, \dots, X_n \overset{\text{i.i.d.}}{\sim} \text{Uniform}(0, \theta)$:
+
+**The Density Requires an Indicator:**
+The uniform density is zero outside the interval $[0, \theta]$, so we write:
+$$f(x) = \frac{1}{\theta} I(0 \le x \le \theta) \quad \text{for } \theta > 0$$
+
+**The Joint Likelihood Enforces a Constraint on the Parameter:**
+Multiplying across all $n$ independent observations gives:
+$$L(\theta) = \prod_{i=1}^n \left( \frac{1}{\theta} I(0 \le X_i \le \theta) \right) = \frac{1}{\theta^n} I(\text{all } 0 \le X_i \le \theta) = \frac{1}{\theta^n} I(\max(X_1, \dots, X_n) \le \theta)$$
+*(Every individual observation is $\le \theta$ if and only if the sample maximum is $\le \theta$.)*
+
+**Why Standard Calculus Fails:**
+Taking the derivative of $\frac{1}{\theta^n}$ with respect to $\theta$ yields:
+$$\frac{d}{d\theta}\left(\frac{1}{\theta^n}\right) = -\frac{n}{\theta^{n+1}}$$
+Because this derivative is strictly negative for all $\theta > 0$, it is never zero. Calculus alone cannot find a critical point.
+
+**Finding the Maximum via Boundary Logic:**
+
+* The term $\frac{1}{\theta^n}$ is strictly decreasing for $\theta > 0$, so we maximize the function by choosing $\theta$ to be as **small** as possible.
+* However, the indicator function imposes a sharp lower boundary: if we choose $\theta < \max(X_1, \dots, X_n)$, the indicator evaluates to $0$, causing the entire likelihood to drop to zero.
+* Therefore, the smallest value $\theta$ can take without zeroing out the likelihood is the largest observed data point itself:
+  $$\widehat{\theta} = \max(X_1, \dots, X_n)$$
+
+**Key Takeaway:**
+Always check the support of your observed data against the assumptions of your distribution. A parametric model must be capable of generating the data you actually observed.

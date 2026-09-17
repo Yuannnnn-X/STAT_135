@@ -1,0 +1,569 @@
+---
+title: "Maximum Likelihood with Multiple Parameters"
+subtitle: "Two-Group Normal Models and Gamma Optimization"
+author: "STAT 135 Lab 3"
+date: "Fall 2026"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE,
+  fig.width = 7, fig.height = 4.5, fig.align = "center"
+)
+set.seed(13503)
+```
+
+In Lab 2, we maximized likelihoods with one unknown parameter. Now we
+will estimate several parameters at once. Sometimes a problem separates
+into smaller problems with explicit solutions. In other cases, we need
+numerical optimization.
+
+Run the chunks in order. The statistical calculations and plots use
+base R; `knitr` formats the tables. Throughout this lab, `log` means the
+natural logarithm. We use $\ell(\theta)$ for likelihood and $L(\theta)$ for log-likelihood, so $L(\theta)=\log\ell(\theta)$.
+
+## 1. A Two-Group Normal Model
+
+### Step 1: Specify the model and its assumptions
+
+Suppose $Y$ is a continuous response and $X$ identifies one of two groups:
+$X=0$ or $X=1$. For example, $Y$ might be a measurement collected under
+each of two experimental conditions.
+
+We model the response conditional on group membership as
+$$
+Y_i\mid X_i=x_i \sim
+\begin{cases}
+\mathcal{N}(\alpha_0,\sigma_0^2), & x_i=0,\\
+\mathcal{N}(\alpha_1,\sigma_1^2), & x_i=1.
+\end{cases}
+$$
+We assume the responses are independent conditional on the observed group
+labels. Within each group, responses share the same normal distribution.
+We allow both the mean and the variance to differ between groups.
+
+There are **four unknown parameters**: $\alpha_0$, $\alpha_1$,
+$\sigma_0^2>0$, and $\sigma_1^2>0$. We condition on the observed $X$
+values, so we do not need a probability model for group membership.
+
+**Question:** Does having two different group means necessarily imply
+that the groups have different variances? What does each parameter describe?
+
+For illustration, simulate two groups with different means and spreads.
+These are simulated measurements, not an actual experiment.
+
+```{r two-group-data}
+set.seed(13503)
+n0 <- 30
+n1 <- 40
+x <- c(rep(0, n0), rep(1, n1))
+y <- c(rnorm(n0, mean = 10, sd = 2),
+       rnorm(n1, mean = 14, sd = 3))
+
+y0 <- y[x == 0]
+y1 <- y[x == 1]
+
+boxplot(y ~ x, col = c("lightblue", "mistyrose"),
+        names = c("Group 0", "Group 1"),
+        main = "Two Groups: Location and Spread",
+        xlab = "Group", ylab = "Response Y")
+points(c(1, 2), c(mean(y0), mean(y1)), pch = 19,
+       col = "firebrick", cex = 1.3)
+legend("topleft", legend = "Sample mean", pch = 19,
+       col = "firebrick", bty = "n")
+```
+
+### Step 2: Write the likelihood and log-likelihood
+
+For simplicity, label the observations so that the first $n_0$ belong
+to group 0 and the next $n_1$ belong to group 1. Define
+$$
+I_0=\{1,\ldots,n_0\},\qquad
+I_1=\{n_0+1,\ldots,n_0+n_1\}.
+$$
+This is just a relabeling of the data: each response stays paired with
+its group label. It does not change the likelihood, the estimates, or
+any of the calculations below; it only simplifies the notation.
+
+Independence lets us multiply the individual normal densities:
+$$
+\ell(\alpha_0,\alpha_1,\sigma_0^2,\sigma_1^2)
+=\prod_{g=0}^1\prod_{i\in I_g}
+\frac{1}{\sqrt{2\pi\sigma_g^2}}
+\exp\left\{-\frac{(y_i-\alpha_g)^2}{2\sigma_g^2}\right\}.
+$$
+Taking logs turns the product into a sum:
+$$
+L=L_0(\alpha_0,\sigma_0^2)+L_1(\alpha_1,\sigma_1^2),
+$$
+where
+$$
+L_g(\alpha_g,\sigma_g^2)
+=-\frac{n_g}{2}\log(2\pi)
+-\frac{n_g}{2}\log(\sigma_g^2)
+-\frac{1}{2\sigma_g^2}\sum_{i\in I_g}(y_i-\alpha_g)^2.
+$$
+
+**Key observation:** The group 0 contribution does not involve the group 1
+parameters, and vice versa. Maximizing the full log-likelihood therefore
+reduces to solving two separate normal MLE problems.
+
+**Question:** When differentiating $L$ with respect to $\alpha_0$,
+what happens to the entire group 1 contribution?
+
+### Step 3: Use partial derivatives
+
+A partial derivative varies one parameter while holding the other
+parameters fixed. For either group $g$, differentiating with respect to
+its mean gives
+$$
+\frac{\partial L_g}{\partial\alpha_g}
+=\frac{1}{\sigma_g^2}\sum_{i\in I_g}(y_i-\alpha_g).
+$$
+Setting this equal to zero yields
+$$
+\widehat\alpha_g=\bar y_g
+=\frac{1}{n_g}\sum_{i\in I_g}y_i.
+$$
+The second derivative is $-n_g/\sigma_g^2<0$, so for any fixed positive
+variance, the sample mean maximizes the log-likelihood over $\alpha_g$.
+
+To differentiate with respect to the **variance**, write $v_g=\sigma_g^2$:
+$$
+\frac{\partial L_g}{\partial v_g}
+=-\frac{n_g}{2v_g}
++\frac{\sum_{i\in I_g}(y_i-\alpha_g)^2}{2v_g^2}.
+$$
+Substituting $\widehat\alpha_g=\bar y_g$ and solving gives
+$$
+\widehat\sigma_g^2
+=\frac{1}{n_g}\sum_{i\in I_g}(y_i-\bar y_g)^2.
+$$
+If the within-group sum of squared deviations is positive, the derivative
+in $v_g$ is positive below this value and negative above it. Thus it is
+the maximizing variance. We assume each group has at least two
+observations with some within-group variation; with all values identical,
+the likelihood grows without bound as the variance approaches zero.
+
+**Exercise:** Write out the four estimates explicitly for groups 0 and 1.
+Which observations contribute to each estimate?
+
+### Step 4: Calculate the estimates in R
+
+```{r normal-mles}
+alpha0_hat <- mean(y0)
+alpha1_hat <- mean(y1)
+sigma20_hat <- mean((y0 - alpha0_hat)^2)
+sigma21_hat <- mean((y1 - alpha1_hat)^2)
+
+normal_results <- data.frame(
+  group = c(0, 1), n = c(length(y0), length(y1)),
+  true_mean = c(10, 14),
+  estimated_mean = c(alpha0_hat, alpha1_hat),
+  true_variance = c(4, 9),
+  estimated_variance = c(sigma20_hat, sigma21_hat)
+)
+knitr::kable(normal_results, digits = 3)
+```
+
+The MLE variance uses divisor $n_g$, whereas R's `var()` uses $n_g-1$.
+This is the same distinction we encountered in Lab 1. Under the model,
+`var()` is unbiased for the group variance; the MLE variance is biased
+downward in finite samples.
+
+```{r variance-divisors}
+knitr::kable(data.frame(
+  group = c(0, 1),
+  MLE_variance = c(sigma20_hat, sigma21_hat),
+  R_var = c(var(y0), var(y1)),
+  converted_R_var = c((n0 - 1) / n0 * var(y0),
+                      (n1 - 1) / n1 * var(y1))
+), digits = 3)
+```
+
+**Question:** If we instead assumed $\sigma_0^2=\sigma_1^2$, could we
+still estimate two unrelated variances? Why would both groups now
+contribute to estimating the shared variance?
+
+## 2. The Gamma Model: Two Parameters That Must Be Solved Together
+
+### Step 1: Review the distribution
+
+The Gamma distribution can model positive, continuous measurements such
+as waiting times. Here $\alpha>0$ is the **shape** and $\lambda>0$ is the
+**rate**. These symbols refer to Gamma parameters, not the group means
+from Section 1.
+
+The density for $z>0$ is
+$$
+f(z;\alpha,\lambda)
+=\frac{\lambda^\alpha}{\Gamma(\alpha)}
+z^{\alpha-1}e^{-\lambda z},
+\qquad
+\mathrm{E}(Z)=\frac{\alpha}{\lambda},\quad
+\mathrm{Var}(Z)=\frac{\alpha}{\lambda^2}.
+$$
+The density is zero for $z<0$; the value assigned at the single point
+zero does not affect continuous probabilities. Our likelihood
+calculations below use strictly positive observations because they
+involve $\log z_i$.
+
+The **Gamma function** is
+$$
+\Gamma(\alpha)=\int_0^\infty t^{\alpha-1}e^{-t}\,dt.
+$$
+It extends the factorial: for positive integers $k$,
+$\Gamma(k)=(k-1)!$. It also provides the normalizing constant that
+makes the Gamma density integrate to one.
+
+```{r gamma-function}
+c(Gamma_1 = gamma(1), Gamma_5 = gamma(5), factorial_4 = factorial(4))
+```
+
+R uses `shape` and `rate` in `dgamma()` and `rgamma()`. Some references
+use a scale parameter instead; **scale is the reciprocal of rate**.
+
+```{r gamma-densities}
+z_grid <- seq(0.001, 10, length.out = 500)
+shapes <- c(1, 2, 5)
+cols <- c("firebrick", "dodgerblue", "darkgreen")
+plot(z_grid, dgamma(z_grid, shape = shapes[1], rate = 1),
+     type = "l", lwd = 2, col = cols[1], ylim = c(0, 1),
+     main = "Gamma Densities with Rate = 1",
+     xlab = "z", ylab = "Density")
+for (j in 2:length(shapes)) {
+  lines(z_grid, dgamma(z_grid, shape = shapes[j], rate = 1),
+        col = cols[j], lwd = 2)
+}
+legend("topright", legend = paste("Shape =", shapes),
+       col = cols, lwd = 2, bty = "n")
+```
+
+When shape equals 1, Gamma is the exponential model from Lab 2.
+Increasing shape at a fixed rate changes both the mean and variance.
+
+**Discussion question:** What characteristics would you want in your
+data to make Gamma a reasonable choice?
+
+We would look for the following characteristics:
+
+* **Positive values:** Gamma models measurements greater than zero,
+  such as waiting times or lifetimes. Negative observations would be
+  incompatible with the model. If recorded zeros occur, we should ask
+  whether they reflect rounding or a separate process before using the
+  strictly positive-data likelihood below.
+* **Continuous measurements:** Values should vary along a continuous
+  scale, such as time in minutes, rather than represent counts or binary
+  outcomes. Rounding a time measurement does not make the underlying
+  quantity a count.
+* **A plausible distributional shape:** Gamma distributions are
+  right-skewed, with a longer tail toward large values. For shape at most
+  1, the density decreases from the boundary at zero; for shape greater
+  than 1, it has one interior peak. Large shape parameters produce less
+  skewness, so the data need not look strongly skewed. Several distinct
+  peaks would suggest that a single Gamma distribution may be unsuitable.
+* **Reasonable independence and common parameters:** For our iid model,
+  observations should not strongly depend on one another and should
+  plausibly come from the same population with a common shape and rate.
+  Repeated measurements on the same subject or a mixture of groups with
+  different typical values may require a different model.
+
+For example, positive waiting times from comparable, independent events,
+with many moderate waits and a few long waits, could be reasonable
+candidates. These characteristics motivate a Gamma model but do not
+prove it fits; compare the observed distribution with the fitted density.
+
+### Step 2: Derive the log-likelihood
+
+Suppose $Z_1,\ldots,Z_n$ are iid Gamma$(\alpha,\lambda)$. For observed
+values $z_1,\ldots,z_n>0$,
+$$
+\ell(\alpha,\lambda)
+=\frac{\lambda^{n\alpha}}{\Gamma(\alpha)^n}
+\left(\prod_{i=1}^n z_i^{\alpha-1}\right)
+\exp\left(-\lambda\sum_{i=1}^n z_i\right).
+$$
+Therefore,
+$$
+L(\alpha,\lambda)
+=n\alpha\log\lambda-n\log\Gamma(\alpha)
++(\alpha-1)\sum_{i=1}^n\log z_i
+-\lambda\sum_{i=1}^n z_i.
+$$
+Unlike the two-group example, this expression does not separate into
+one function of $\alpha$ plus another function of $\lambda$. The term
+$n\alpha\log\lambda$ involves both parameters.
+
+**Exercise:** Derive this expression from the product of individual
+densities. Which terms contain both unknown parameters?
+
+### Step 3: Find the likelihood equations
+
+Differentiating with respect to rate gives
+$$
+\frac{\partial L}{\partial\lambda}
+=\frac{n\alpha}{\lambda}-\sum_{i=1}^n z_i.
+$$
+Setting it equal to zero gives a relationship between the estimates:
+$$
+\widehat\lambda=\frac{\widehat\alpha}{\bar z}.
+$$
+This is not yet a numerical answer: $\widehat\alpha$ is still unknown.
+
+Differentiating with respect to shape gives
+$$
+\frac{\partial L}{\partial\alpha}
+=n\log\lambda-n\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}
++\sum_{i=1}^n\log z_i.
+$$
+The function $\psi(\alpha)=\Gamma'(\alpha)/\Gamma(\alpha)$ is called the
+**digamma function**; R evaluates it using `digamma()`.
+Substituting the rate equation and dividing by $n$ yields
+$$
+\log\widehat\alpha-\psi(\widehat\alpha)
+=\log\bar z-\frac{1}{n}\sum_{i=1}^n\log z_i.
+$$
+There is no general closed-form expression for $\widehat\alpha$.
+We can still estimate both parameters by numerical optimization.
+
+**Question:** Why does finding a formula for $\widehat\lambda$ in terms
+of $\widehat\alpha$ not finish the problem?
+
+### Step 4: Simulate data and choose starting values
+
+```{r gamma-data}
+set.seed(13504)
+n_gamma <- 150
+true_shape <- 3
+true_rate <- 1.5
+z <- rgamma(n_gamma, shape = true_shape, rate = true_rate)
+
+c(sample_mean = mean(z), sample_variance = var(z),
+  true_mean = true_shape / true_rate,
+  true_variance = true_shape / true_rate^2)
+```
+
+An iterative optimizer needs initial guesses. From the mean and variance
+formulas, $\alpha=\mu^2/v$ and $\lambda=\mu/v$. Substituting the sample
+mean and the empirical variance gives useful starting values.
+These moment-based guesses are not generally the MLEs.
+
+```{r gamma-start}
+m <- mean(z)
+v <- mean((z - m)^2)
+start <- c(shape = m^2 / v, rate = m / v)
+start
+```
+
+### Step 5: Use `optim()` to maximize the log-likelihood
+
+By default, `optim()` **minimizes** a function, so we supply the
+**negative log-likelihood**. Adding log densities is more numerically
+stable than multiplying many small density values.
+
+Both parameters must be positive. We optimize their logarithms:
+$\eta_1=\log\alpha$ and $\eta_2=\log\lambda$. Exponentiating inside the
+function ensures that every proposed shape and rate is positive.
+This just changes how we describe the parameters; the data likelihood
+remains the same.
+
+```{r gamma-optim}
+neg_loglik <- function(log_par, data) {
+  shape <- exp(log_par[1])
+  rate <- exp(log_par[2])
+  -sum(dgamma(data, shape = shape, rate = rate, log = TRUE))
+}
+
+fit_gamma <- optim(
+  par = log(start),
+  fn = neg_loglik,
+  data = z,
+  method = "BFGS"
+)
+
+gamma_hat <- exp(fit_gamma$par)
+alpha_hat <- unname(gamma_hat["shape"])
+lambda_hat <- unname(gamma_hat["rate"])
+
+knitr::kable(data.frame(
+  parameter = c("Shape", "Rate"),
+  truth = c(true_shape, true_rate),
+  starting_value = as.numeric(start),
+  MLE = as.numeric(gamma_hat)
+), digits = 4)
+
+c(convergence_code = fit_gamma$convergence,
+  negative_loglik_at_solution = fit_gamma$value)
+```
+
+`par` gives the starting log parameters; `fn` is the function to minimize;
+`data` passes our observations to that function. `BFGS` is an iterative
+optimization method. The returned `par` contains the fitted **log**
+parameters, so we use `exp()` to recover shape and rate.
+
+A convergence code of 0 indicates successful completion according to
+the optimizer's criteria. It is useful to check the likelihood equations
+as well, rather than relying only on that code.
+
+```{r gamma-checks}
+c(
+  fitted_rate = lambda_hat,
+  shape_over_sample_mean = alpha_hat / mean(z),
+  shape_equation_residual = log(alpha_hat) - digamma(alpha_hat) -
+    (log(mean(z)) - mean(log(z))),
+  loglik_improvement = neg_loglik(log(start), z) - fit_gamma$value
+)
+```
+
+These quantities check whether the numerical estimates satisfy the
+likelihood equations we derived:
+
+* **`shape_over_sample_mean`** computes $\widehat\alpha/\bar z$.
+  Setting the derivative with respect to rate equal to zero gave
+  $\widehat\lambda=\widehat\alpha/\bar z$. Therefore, this value should
+  agree closely with `fitted_rate`, the rate estimate returned by
+  `optim()`.
+* **`shape_equation_residual`** computes the left side minus the right
+  side of our shape equation:
+  $$
+  \underbrace{\log\widehat\alpha-\psi(\widehat\alpha)}_{\text{left side}}
+  -\underbrace{\left(\log\bar z-
+  \frac{1}{n}\sum_{i=1}^n\log z_i\right)}_{\text{right side}}.
+  $$
+  Here $\psi$ is the digamma function, evaluated by R's `digamma()`.
+  At the exact solution, the two sides are equal, so the residual is
+  zero. A residual close to zero indicates that the fitted shape
+  approximately satisfies this equation.
+* **`loglik_improvement`** is the fitted log-likelihood minus the
+  starting log-likelihood. It should be nonnegative up to numerical
+  rounding, since optimization should improve on the starting guess.
+
+The first two checks together assess whether `optim()` approximately
+solved both likelihood equations. Small discrepancies are expected
+because numerical optimization uses finite precision and stopping
+tolerances. These are checks of the optimization, not proof that the
+Gamma model is a good fit to the data.
+
+### Step 6: Visualize the fitted model and likelihood
+
+```{r gamma-fitted-density}
+hist(z, probability = TRUE, breaks = "FD", col = "gray85",
+     border = "white", main = "Gamma Data and Fitted Density",
+     xlab = "Observed value")
+curve(dgamma(x, shape = alpha_hat, rate = lambda_hat),
+      add = TRUE, col = "firebrick", lwd = 2)
+curve(dgamma(x, shape = true_shape, rate = true_rate),
+      add = TRUE, col = "navy", lwd = 2, lty = 2)
+legend("topright", legend = c("Fitted density", "True density"),
+       col = c("firebrick", "navy"), lwd = 2, lty = c(1, 2),
+       bty = "n")
+```
+
+The true density is available here because we simulated the data.
+With real observations, we would not know the true parameters.
+The histogram is on a density scale so that the overlays are comparable.
+
+With two parameters, a contour plot lets us view the log-likelihood
+as a surface. Each contour connects parameter pairs with the same
+log-likelihood value.
+
+```{r gamma-likelihood-contours}
+shape_grid <- seq(0.6 * alpha_hat, 1.4 * alpha_hat, length.out = 80)
+rate_grid <- seq(0.6 * lambda_hat, 1.4 * lambda_hat, length.out = 80)
+ll_grid <- outer(shape_grid, rate_grid, Vectorize(function(a, r) {
+  sum(dgamma(z, shape = a, rate = r, log = TRUE))
+}))
+
+# Shift by the fitted maximum; this does not change the maximizing pair.
+relative_ll <- ll_grid + fit_gamma$value
+contour(shape_grid, rate_grid, relative_ll,
+        levels = c(-20, -10, -5, -2, -0.5),
+        xlab = expression(alpha~"(shape)"),
+        ylab = expression(lambda~"(rate)"),
+        main = "Gamma Log-Likelihood Relative to Its Maximum")
+points(alpha_hat, lambda_hat, col = "firebrick", pch = 19)
+points(true_shape, true_rate, col = "navy", pch = 4, lwd = 2)
+legend("topleft", legend = c("MLE", "Truth"),
+       col = c("firebrick", "navy"), pch = c(19, 4), bty = "n")
+```
+
+**Discussion:** Why is the fitted maximum not exactly at the true
+parameter pair? If we generated another sample, would the contour plot
+and estimates remain identical?
+
+**Try it:** Rerun `optim()` starting from `log(c(shape = 1, rate = 1))`.
+Compare the estimates, convergence code, and final objective value.
+Agreement from different starts provides a useful numerical check.
+
+## 3. Attendance Question: A Binary Predictor
+
+Return to the two-group setting from Section 1. Attempt the attendance
+question before going through the solution below.
+
+Our standard linear model is
+$$
+\mathrm{E}(Y\mid X=x)=\beta_0+\beta_1x.
+$$
+Suppose the predictor $X$ is binary, either 0 or 1.
+
+1. What is $\mathrm{E}(Y\mid X=0)$ in this model?
+2. What is $\mathrm{E}(Y\mid X=1)$ in this model?
+
+### End-of-lab walkthrough
+
+Substitute the two possible predictor values:
+$$
+\mathrm{E}(Y\mid X=0)=\beta_0+\beta_1(0)=\beta_0,
+$$
+$$
+\mathrm{E}(Y\mid X=1)=\beta_0+\beta_1(1)=\beta_0+\beta_1.
+$$
+Thus we can rewrite the conditional mean as
+$$
+\mathrm{E}(Y\mid X=x)=
+\begin{cases}
+\beta_0, & x=0,\\
+\beta_0+\beta_1, & x=1.
+\end{cases}
+$$
+Comparing with our earlier group-mean notation gives
+$$
+\alpha_0=\beta_0,\qquad \alpha_1=\beta_0+\beta_1,
+$$
+or equivalently,
+$$
+\beta_0=\alpha_0,\qquad \beta_1=\alpha_1-\alpha_0.
+$$
+
+These are two ways to describe the same conditional means, but the
+coefficients have different meanings:
+
+* $\alpha_0$ and $\beta_0$ are the mean response in group 0.
+* $\alpha_1$ is the mean response in group 1.
+* $\beta_1$ is the difference in mean response: group 1 minus group 0.
+
+```{r attendance-connection}
+beta0_hat <- alpha0_hat
+beta1_hat <- alpha1_hat - alpha0_hat
+
+knitr::kable(data.frame(
+  group = c(0, 1),
+  fitted_group_mean = c(alpha0_hat, alpha1_hat),
+  fitted_linear_mean = beta0_hat + beta1_hat * c(0, 1)
+), digits = 3)
+
+# With a binary predictor, least squares gives the same fitted means.
+fit_linear <- lm(y ~ x)
+c(intercept = unname(coef(fit_linear)[1]),
+  slope = unname(coef(fit_linear)[2]))
+```
+
+This equality concerns the fitted **means**. Our original normal model
+allows different group variances; the usual constant-variance normal
+regression model imposes an additional assumption. Matching the mean
+formulas does not require the variances to be equal.
+
+**Final check:** If the group means were 10 and 14, what would
+$(\alpha_0,\alpha_1)$ be? What would $(\beta_0,\beta_1)$ be? Explain why
+$\beta_1$ is a difference rather than the mean of group 1.
