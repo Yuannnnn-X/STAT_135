@@ -1,0 +1,48 @@
+---
+title: "STAT 135 HW3 R Calculations"
+author: "Yuan Xie"
+format: pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+```
+
+# 1. Problem 4.14
+
+## data import
+```{r}
+students <- read_table("Students.dat.txt")
+head(students)
+```
+
+## (a)
+```{r}
+xbar <- mean(students$tv)
+s <- sd(students$tv)
+n <- length(students$tv)
+
+# n = 60, which is bigger than 30.
+# It should be considered as a big sample size.
+lower <- xbar - qnorm(0.975) * s / sqrt(n)
+upper <- xbar + qnorm(0.975) * s / sqrt(n)
+
+c(lower, upper)
+```
+
+
+
+
+
+
+
+
+
+
+
+
