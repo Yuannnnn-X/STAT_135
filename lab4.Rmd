@@ -1,0 +1,604 @@
+---
+title: "Sampling Distributions and Estimation"
+subtitle: "The Shifted Exponential Model"
+author: "STAT 135 Lab 4"
+date: "Fall 2026"
+output:
+  pdf_document:
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  fig.align = "center"
+)
+
+set.seed(13504)
+```
+
+# The Shifted Exponential Model
+
+Let $Y\sim\operatorname{Exp}(\lambda)$, where rate $\lambda>0$, and define $X=\theta+Y$. The parameter $\theta\in\mathbb R$ shifts the support to start at $\theta$ without changing its shape:
+
+$$
+f(x;\theta,\lambda)=
+\begin{cases}
+\lambda e^{-\lambda(x-\theta)},&x\ge\theta,\\
+0,&x<\theta.
+\end{cases}
+$$
+
+Adding a constant shifts the mean but does not change the variance:
+
+$$
+\mathrm E(X)=\theta + \mathrm E(Y) = \theta+\frac1\lambda,\qquad
+\operatorname{Var}(X)=\operatorname{Var}(Y) = \frac1{\lambda^2}.
+$$
+
+```{r shifted-densities, fig.width=9, fig.height=4}
+lambda <- 0.1
+shifts <- c(0, 5, 15)
+
+par(mfrow = c(1, 3), mar = c(4, 4, 3, 1), oma = c(0, 0, 3, 0))
+
+for (shift in shifts) {
+
+  plot(
+    NA,
+    xlim = c(-5, 60),
+    ylim = c(0, 0.12),
+    xlab = "x",
+    ylab = "Density",
+    main = paste("Shift =", shift)
+  )
+
+  # Density is 0 for x < shift
+  segments(
+    x0 = -5, y0 = 0,
+    x1 = shift, y1 = 0,
+    lwd = 2
+  )
+
+  # Density for x >= shift
+  x <- seq(shift, 60, length.out = 500)
+
+  density <- lambda * exp(
+    -lambda * (x - shift)
+  )
+
+  lines(x, density, lwd = 2)
+
+  # Show the jump at x = shift
+  points(shift, 0, pch = 21, bg = "white")
+  points(shift, lambda, pch = 19)
+
+  abline(v = shift, lty = 2, col = "gray")
+}
+
+mtext(
+  expression(lambda == 0.1 * ", Different Shifts"),
+  side = 3,
+  outer = TRUE,
+  line = 1,
+  font = 2
+)
+```
+
+**Question:** With $\theta=5$ and $\lambda=0.1$, what are the mean, variance, and standard deviation of one observation? Which change if we increase only $\theta$?
+
+# Maximum Likelihood with A Support Constraint
+
+Suppose
+
+$$
+X_1,\ldots,X_n
+\stackrel{\text{iid}}{\sim}
+\text{shifted exponential}(\theta,\lambda).
+$$
+
+For observed data $x_1,\ldots,x_n$, the likelihood is
+
+$$
+\ell(\theta,\lambda)
+=\lambda^n\exp\left\{-\lambda\sum_{i=1}^n(x_i-\theta)\right\}
+I\{x_i \ge \theta\},\qquad \lambda>0.
+$$The condition $x_i\ge\theta$ must hold for *every* observation. Let
+
+$$
+x_{(1)}=\min(x_1,\ldots,x_n).
+$$
+
+Then all indicators equal one exactly when
+
+$$
+\theta\le x_{(1)}.
+$$
+
+Therefore,
+
+$$
+\ell(\theta,\lambda)
+=\lambda^n
+\exp\left\{-\lambda\sum_{i=1}^n(x_i-\theta)\right\}
+I(\theta\le x_{(1)}).
+$$
+
+On the feasible region $\theta\le x_{(1)}$, the log-likelihood is
+
+$$
+L(\theta,\lambda)
+=n\log\lambda
+-\lambda\sum_{i=1}^n x_i
++n\lambda\theta.
+$$Outside that region, the likelihood is zero, so the log-likelihood is $-\infty$.
+
+Hence, the log-likelihood is
+
+$$
+L(\theta,\lambda)=
+\begin{cases}
+n\log\lambda-\lambda\sum_{i=1}^n x_i+n\lambda\theta,
+  &\theta\le x_{(1)}\\
+-\infty,&\theta>x_{(1)}
+\end{cases}.
+$$
+
+## Maximize over the shift
+
+For any fixed $\lambda>0$, inside the feasible region,
+
+$$
+\frac{\partial L}{\partial\theta}=n\lambda>0.
+$$There is no interior point where this derivative equals zero. But this does *not* mean the likelihood has no maximum. Since the log-likelihood is strictly increasing as a function of $\theta$ on its constrained domain $\theta\le x_{(1)}$, choose the largest feasible shift:
+
+$$\widehat\theta=x_{(1)}.$$
+
+## Maximize over the rate
+
+Substituting $\widehat\theta=x_{(1)}$ into the log-likelihood and differentiating with respect to $\lambda$ gives
+
+$$
+\widehat\lambda
+=\frac{n}{\sum_{i=1}^n(x_i-x_{(1)})}
+=\frac{1}{\bar x-x_{(1)}}.
+$$
+
+The second derivative is $-n/\lambda^2<0$.
+
+Thus,
+
+$$
+\boxed{
+\widehat\theta=X_{(1)},
+\qquad
+\widehat\lambda=\frac{1}{\overline X-X_{(1)}}.
+}
+$$
+
+For the demonstrations below, use
+
+$$
+\theta=5,\qquad \lambda=0.1.
+$$
+
+```{r parameters}
+theta_true <- 5
+lambda_true <- 0.1
+
+c(
+  theta_true = theta_true,
+  lambda_true = lambda_true
+)
+```
+
+Now, let's draw one sample of size 20 and calculate the corresponding maximum likelihood estimates.
+
+```{r one-sample-mles}
+n <- 20
+x <- theta_true + rexp(n, rate = lambda_true)
+
+theta_hat <- min(x)
+lambda_hat <- 1 / (mean(x) - theta_hat)
+
+knitr::kable(
+  data.frame(
+    parameter = c("Shift", "Rate"),
+    truth = c(theta_true, lambda_true),
+    estimate = c(theta_hat, lambda_hat)
+    ), 
+  digits = 4
+)
+```
+
+You will find that the estimates $\hat{\theta}$ and $\hat{\lambda}$ change as you repeatedly run the code chunk above.
+
+The **estimator** is a function of the sample data, so it is a random variable. An **estimate** is the numerical value obtained after applying the estimator to a particular observed sample. Therefore, different samples can produce different estimates.
+
+**Question:** Is `theta_hat` possible to be smaller than the true $\theta=5$ under this model?
+
+# Sampling Distribution
+
+Suppose $X_1,\ldots,X_n$ are random variables from a population model with unknown parameter $\theta$. An estimator of $\theta$ is a function of the sample data,
+
+$$
+\widehat\theta=T(X_1,\ldots,X_n).
+$$
+
+Before the sample data is observed, $\widehat\theta$ is random because it depends on random variables. Its probability distribution across repeated samples of a fixed size is the *sampling distribution* of $\widehat\theta$.
+
+A **sampling distribution** is the distribution of a statistic across repeated samples of a fixed size from the same population. Distinguish:
+
+-   $X_i$: one random variable from the population distribution.
+
+-   $x_i$: the realization (observed value) of $X_i$.
+
+-   $\widehat\theta=T(X_1,\ldots,X_n)$: an estimator (a statistic) — a random variable.
+
+-   $\widehat\theta(x_1,\ldots,x_n)$: an estimate — a numerical value after applying the estimator on the observed sample data.
+
+-   the **data distribution** describes one random variable $X_i$.
+
+-   the **sampling distribution** describes one statistic computed from a whole sample.
+
+## Simulate the sampling distribution of $\hat\theta$
+
+To simulate the sampling distribution of $\hat\theta$ of sample size $20$, we repeatedly draw a sample of size $20$ from the population and calculate the estimate for each sample.
+
+```{r simulate-theta-hat}
+B <- 100000
+n <- 20
+
+theta_hat_sim <- replicate(B, {
+  new_sample <- theta_true + rexp(n, rate = lambda_true)
+  min(new_sample)
+})
+
+c(
+  simulated_mean = mean(theta_hat_sim),
+  simulated_variance = var(theta_hat_sim)
+)
+```
+
+The simulation gives 10,000 estimates of $\theta$, one from each simulated sample.
+
+```{r compare-distributions, fig.height=4}
+individual_sim <- theta_true + rexp(B, rate = lambda_true)
+plot_limit <- theta_true + qexp(0.975, rate = lambda_true)
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1), cex.main = 0.85)
+hist(
+  individual_sim, probability = TRUE, breaks = 40,
+  xlim = c(theta_true, plot_limit), col = "gray85", border = "white",
+  main = expression("Simulated Data Distribution"), xlab = "x"
+)
+curve(dexp(x - theta_true, rate = lambda_true), add = TRUE,
+      col = "firebrick", lwd = 2)
+
+hist(theta_hat_sim, probability = TRUE, breaks = 40,
+     xlim = c(theta_true, plot_limit), col = "skyblue", border = "white",
+     main = expression("Simulated Sampling Distribution of " * hat(theta)), 
+     xlab = expression(hat(theta)))
+par(mfrow = c(1, 1))
+```
+
+The panels use the same horizontal limits (a few extreme observations may be outside the displayed range). Their vertical scales differ. Both distributions are right-skewed, but the the simulated sampling distribution of $\hat\theta$ is more concentrated.
+
+Can we get the exact sampling distribution of $\hat\theta = X_{(1)}$?
+
+## Exact sampling distribution of $\hat\theta = X_{(1)}$
+
+We want the distribution of the minimum in the sample. Directly calculating
+
+$$
+P(X_{(1)}\le u)
+$$can be awkward because "the minimum is at most $u$" means at least one observation is at most $u$. The complement is easier:
+
+$$
+P(X_{(1)}>u)
+=P(X_1>u,\ldots,X_n>u).
+$$
+
+For $u\ge\theta$, independence gives
+
+$$
+P(X_{(1)}>u)
+=\prod_{i=1}^nP(X_i>u).
+$$
+
+For one shifted-exponential observation,
+
+$$
+P(X_i>u)
+=\int_u^\infty \lambda e^{-\lambda(t-\theta)}\,dt
+=e^{-\lambda(u-\theta)}.
+$$
+
+Therefore,
+
+$$
+P(X_{(1)}>u)
+=\left[e^{-\lambda(u-\theta)}\right]^n
+=e^{-n\lambda(u-\theta)}.
+$$
+
+Hence the CDF is
+
+$$
+F_{X_{(1)}}(u)
+=P(X_{(1)}\le u)
+=1-e^{-n\lambda(u-\theta)},
+\qquad u\ge\theta.
+$$
+
+Differentiating,
+
+$$
+f_{X_{(1)}}(u)
+=n\lambda e^{-n\lambda(u-\theta)},
+\qquad u\ge\theta.
+$$
+
+Thus
+
+$$
+\boxed{
+\hat \theta = X_{(1)}\sim \text{shifted exponential}(\theta,n\lambda).
+}
+$$
+
+The maximum likelihood estimator of $\hat\theta$ has the same distributional family as the data distribution, but its rate is $n\lambda$ instead of $\lambda$.
+
+```{r sampling-dsn-theta}
+hist(
+  theta_hat_sim,
+  breaks = 50,
+  probability = TRUE,
+  main = expression("Sampling Distribution of " * hat(theta)),
+  xlab = expression(hat(theta)),
+  col = "skyblue",
+  border = "white"
+)
+
+u_grid <- seq(theta_true, max(theta_hat_sim), length.out = 500)
+
+exact_density <- n * lambda_true *
+  exp(-n * lambda_true * (u_grid - theta_true))
+
+lines(u_grid, exact_density, lwd = 2, col = "navy")
+
+abline(v = theta_true, lty = 2)
+
+legend(
+  "topright",
+  legend = c("Simulated", "Exact"),
+  fill = c("skyblue", NA),
+  border = c("white", NA),
+  lty = c(NA, 1),
+  lwd = c(NA, 2),
+  bty = "n"
+)
+```
+
+The histogram is empirical; the curve is the exact theoretical sampling distribution. With many repetitions (that's why we use a large `B`), they should agree closely.
+
+Compare the theoretical results with the simulation.
+
+```{r simulation-vs-theory}
+comparison <- data.frame(
+  quantity = c("Mean", "Variance", "Standard error"),
+  simulation = c(
+    mean(theta_hat_sim),
+    var(theta_hat_sim),
+    sd(theta_hat_sim)
+  ),
+  theory = c(
+    theta_true + 1 / (n * lambda_true),
+    1 / (n * lambda_true)^2,
+    1 / (n * lambda_true)
+  )
+)
+
+knitr::kable(
+  comparison,
+  digits = 4,
+  caption = "Simulation versus exact sampling-distribution results"
+)
+```
+
+# Bias and Variance
+
+The bias of an estimator is its average distance from the true value of the population parameter:
+
+$$
+\mathrm{Bias}(\hat{\theta}) = E(\hat{\theta}) - \theta.
+$$ We call an estimator **unbiased** if the bias is zero, that is, if $E(\hat{\theta}) = \theta$.
+
+## Bias and variance of $\hat\theta$
+
+$$
+E(\widehat\theta)
+=\theta+\frac{1}{n\lambda},
+$$
+
+and
+
+$$
+\operatorname{Var}(\widehat\theta)
+=\frac{1}{(n\lambda)^2}.
+$$Thus,
+
+$$
+\operatorname{Bias}(\widehat\theta)
+=\frac{1}{n\lambda},
+$$and
+
+$$
+\operatorname{SE}(\hat\theta) = \frac{1}{n\lambda}.
+$$ $\hat\theta = X_{(1)}$ is a biased estimator of $\theta$, but the bias goes to $0$ as $n\to \infty$.
+
+We also see that the standard error gets smaller with more data ($n$ is large).
+
+## Estimate the bias and variance of $\hat\theta$
+
+Since the theoretical formulas above involve the unknown rate $\lambda$, we can use a **plug-in estimate** that replaces $\lambda$ by $\widehat\lambda$:
+
+$$
+\widehat{\operatorname{Bias}}(\widehat\theta)=\frac1{n\widehat\lambda},
+\qquad
+\widehat{\operatorname{Var}}(\widehat\theta)=\frac1{n^2\widehat\lambda^2},
+\qquad
+\widehat{\operatorname{SE}}(\widehat\theta)=\frac1{n\widehat\lambda}.
+$$ For $n=20$, $\theta=5$, and $\lambda=0.1$:
+
+```{r plugin-estimates}
+bias_hat <- 1 / (n * lambda_hat)
+variance_hat <- 1 / (n * lambda_hat)^2
+se_hat <- sqrt(variance_hat)
+knitr::kable(
+  data.frame(
+    quantity = c("Bias", "Variance", "Standard error"),
+    true_value = c(1 / (n * lambda_true), 1 / (n * lambda_true)^2,
+                   1 / (n * lambda_true)),
+    plugin_estimate = c(bias_hat, variance_hat, se_hat)
+    ), 
+  digits = 4
+)
+```
+
+## What changes when the sample size increases?
+
+The data distribution *does not* change when we collect a larger sample. However, the sampling distribution of $\widehat\theta$ *does* change because its rate is $n\lambda$.
+
+Create a helper function that simulates many samples and calculate the estimate of $\theta$ for each sample.
+
+```{r theta-sim-function}
+sim_theta_hat <- function(n, B, theta, lambda) {
+  replicate(
+    B,
+    min(theta + rexp(n, rate = lambda))
+  )
+}
+```
+
+Simulate three different sample sizes.
+
+```{r bias-and-se-comparison-across-sample-size}
+sample_sizes <- c(5, 20, 100)
+theta_hat_by_n <- lapply(
+  sample_sizes,
+  sim_theta_hat,
+  B = 10000,
+  theta = theta_true,
+  lambda = lambda_true
+)
+knitr::kable(
+  data.frame(
+    n = sample_sizes,
+    simulated_bias = sapply(theta_hat_by_n, mean) - theta_true,
+    theoretical_bias = 1 / (sample_sizes * lambda_true),
+    simulated_SE = sapply(theta_hat_by_n, sd),
+    theoretical_SE = 1 / (sample_sizes * lambda_true)
+  ), 
+  digits = 4
+)
+```
+
+```{r sample-size-comparison, fig.height=4}
+par(mfrow = c(1, 3))
+for (j in seq_along(sample_sizes)) {
+  nn <- sample_sizes[j]
+  hist(theta_hat_by_n[[j]], probability = TRUE, breaks = 35,
+       xlim = c(theta_true, theta_true + 10),
+       col = "skyblue", border = "white", main = paste("n =", nn),
+       xlab = expression(hat(theta)))
+  curve(dexp(x - theta_true, rate = nn * lambda_true),
+        add = TRUE, col = "navy", lwd = 2)
+  abline(v = theta_true, col = "firebrick", lty = 2,  lwd = 2)
+}
+```
+
+As $n$ grows, the sampling distribution becomes more concentrated around $\theta$. Both its bias and standard error decrease as the sample size increases.
+
+# Sampling Distribution of $\widehat\lambda$
+
+The exact sampling distribution of
+
+$$
+\widehat\lambda
+=\frac{1}{\overline X-X_{(1)}}
+$$
+
+is more complicated than the sampling distribution of $\hat\theta = X_{(1)}$. It still has an exact sampling distribution though, it's just difficult to figure out. So we simulate its sampling distribution.
+
+```{r lambda-sim-function}
+sim_lambda_hat <- function(n, B, theta, lambda) {
+  replicate(B, {
+    x_b <- theta + rexp(n, rate = lambda)
+    1 / (mean(x_b) - min(x_b))
+  })
+}
+```
+
+By doing simulations with several sample sizes, we can see that as the sample size increases, the simulated mean of $\hat\lambda$ gets closer to the true $\lambda$ and the simulated standard error of $\hat\lambda$ approaches zero.
+
+```{r lambda-sampling-distributions}
+sample_sizes <- c(5, 20, 100)
+
+lambda_sim_by_n <- lapply(
+  sample_sizes,
+  sim_lambda_hat,
+  B = 10000,
+  theta = theta_true,
+  lambda = lambda_true
+)
+
+lambda_summary <- data.frame(
+  n = sample_sizes,
+  simulated_mean = sapply(lambda_sim_by_n, mean),
+  simulated_sd = sapply(lambda_sim_by_n, sd),
+  true_lambda = lambda_true
+)
+
+knitr::kable(lambda_summary, digits = 4)
+```
+
+Let's plot the simulated sampling distribution of $\lambda$ for different sample sizes. For larger $n$, we can see that the simulated sampling distribution of $\lambda$ concentrate more tightly near the true $\lambda$. What do you find from the shape of the simulated sampling distribution?
+
+```{r lambda-samping-dsn-plot, fig.height=4}
+par(mfrow = c(1, 3))
+
+for (j in seq_along(sample_sizes)) {
+
+  nn <- sample_sizes[j]
+
+  hist(
+    lambda_sim_by_n[[j]],
+    probability = TRUE,
+    breaks = 60,
+    col = "skyblue",
+    border = "white",
+    main = paste("n =", nn),
+    xlab = expression(hat(lambda))
+  )
+
+  # Corresponding asymptotic normal density
+  curve(
+    dnorm(
+      x,
+      mean = lambda_true,
+      sd = lambda_true / sqrt(nn)
+    ),
+    add = TRUE,
+    lwd = 2,
+    col = "navy"
+  )
+
+  # True value of lambda
+  abline(v = lambda_true, lty = 2)
+}
+
+```
