@@ -1,0 +1,346 @@
+---
+title: "Confidence Intervals: Student Version"
+author: "STAT 135 Lab 5"
+date: "Fall 2026"
+output: pdf_document
+header-includes:
+  - \usepackage{xcolor}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(ggplot2)
+```
+
+## 1. Components of a Confidence Interval
+
+When working with real data, we essentially never know the true population variance ($\sigma^2$). Therefore, we focus on confidence intervals built from the data we actually have. The general form of a confidence interval for a sample mean $\bar{X}$ is:
+
+$$\bar{X} \pm (\text{a quantile}) \times \widehat{SE}(\bar{X})$$
+
+Here is how we find these pieces:
+
+* **Point Estimate:** $\bar{X}$ (the sample mean).
+* **Standard Error:** $\widehat{SE}(\bar{X}) = \frac{S}{\sqrt{n}}$, where $S$ is the sample standard deviation.
+* **Quantile:** Because we estimate $\sigma$ with $S$, we introduce extra variability. For small samples, we use a quantile from the **$t$-distribution** with $n-1$ degrees of freedom instead of the standard normal distribution. (For large $n$, the $t$-distribution and normal distribution are virtually identical).
+
+**Note on "Known Variance":** In lecture, creating confidence intervals with a known $\sigma^2$ was discussed. This is purely a thought experiment to build intuition. In real-world practice, we always have to estimate variance from the sample.
+
+### True/False: Common Mistakes to Avoid
+Test your understanding of the components above by answering True or False to the following statements:
+
+1. **True / False:** To find the margin of error for a sample mean, you multiply the appropriate quantile by the sample standard deviation ($S$).
+   
+   \textcolor{violet}{\textbf{Answer:}} 
+
+2. **True / False:** The standard error of the sample mean is calculated as $S^2/n$.
+   
+   \textcolor{violet}{\textbf{Answer:}} 
+
+3. **True / False:** To compute a 95% confidence interval ($\alpha = 0.05$), you should use the 0.95 quantile of the appropriate distribution.
+   
+   \textcolor{violet}{\textbf{Answer:}} 
+
+4. **True / False:** A 95% confidence interval means that the true population parameter $\mu$ is a random variable that has a 95% chance of falling within our calculated boundaries.
+   
+   \textcolor{violet}{\textbf{Answer:}} 
+
+## 2. Finding Quantiles in R
+
+To build a $100(1-\alpha)\%$ confidence interval, you need the $1 - \alpha/2$ quantile.
+
+**Why $1-\alpha/2$?**
+If we want to be $95\%$ confident, our $\alpha = 0.05$ represents our total error rate. Because a confidence interval is symmetric, we split this error equally into the left and right tails (0.025 in each). To capture the middle $95\%$, we need the value that leaves exactly $2.5\%$ in the right tail, which is the $1 - 0.025 = 0.975$ cumulative probability quantile.
+
+**Exercise:** What quantiles would you need for a 90% CI and a 99% CI? Fill in the missing values below.
+
+```{r quantiles, eval=FALSE}
+n <- 40
+
+# Find the t-quantiles for 90% and 99% CIs:
+t_90 <- qt(____, df = ____)
+t_99 <- qt(____, df = ____)
+
+cat("90% t-quantile:", round(t_90, 4), "\n")
+cat("99% t-quantile:", round(t_99, 4), "\n")
+```
+
+**Conceptual Questions:**
+
+* What happens to the width of the confidence interval if we increase our confidence level from 90% to 99%?
+  
+  \textcolor{violet}{\textbf{Answer:}} 
+
+* What happens to the $t$-quantile as the degrees of freedom ($n-1$) increases?
+  
+  \textcolor{violet}{\textbf{Answer:}} 
+
+## 3. Example: Chicago Income Data (Mean)
+
+Let's look at the Chicago public housing income data (from Agresti 4.9). We have a sample of 40 households.
+
+Notice that to calculate the confidence interval, you don't actually need the raw dataset. You *only* need the necessary summary statistics. However, to check **assumptions** (like normality), you *do* need the full dataset.
+
+```{r load-chicago}
+chicago <- read.table("Chicago.dat", header = TRUE)
+
+# Summary statistics table with extra distractor metrics
+stats_table <- data.frame(
+  Statistic = c(
+    "Sample Size (n)",
+    "Sample Mean (X-bar)",
+    "Sample Variance (S^2)",
+    "Sample Standard Deviation (S)",
+    "Median",
+    "Interquartile Range (IQR)",
+    "Minimum",
+    "Maximum",
+    "Sum (sum X_i)"
+  ),
+  Value = c(
+    nrow(chicago),
+    round(mean(chicago$income), 3),
+    round(var(chicago$income), 3),
+    round(sd(chicago$income), 3),
+    round(median(chicago$income), 3),
+    round(IQR(chicago$income), 3),
+    round(min(chicago$income), 3),
+    round(max(chicago$income), 3),
+    round(sum(chicago$income), 3)
+  )
+)
+
+knitr::kable(stats_table, caption = "Summary Statistics: Chicago Household Income (in $1,000s)")
+```
+
+**Task:** Identify the necessary summary statistics from the table above, and calculate a 90% and 99% confidence interval for the true mean income.
+
+```{r ci-chicago, eval=FALSE}
+# Identify and extract only the relevant statistics from the table:
+n_chic    <- ____
+mean_chic <- ____
+sd_chic   <- ____
+
+# Calculate the Standard Error:
+se_chic <- ____
+
+# 90% Confidence Interval:
+margin_90 <- qt(____, df = ____) * se_chic
+ci_90     <- c(mean_chic - margin_90, mean_chic + margin_90)
+cat("90% CI: (", round(ci_90[1], 3), ",", round(ci_90[2], 3), ")\n")
+
+# 99% Confidence Interval:
+margin_99 <- qt(____, df = ____) * se_chic
+ci_99     <- c(mean_chic - margin_99, mean_chic + margin_99)
+cat("99% CI: (", round(ci_99[1], 3), ",", round(ci_99[2], 3), ")\n")
+```
+
+We plot a histogram of the data below to inspect assumptions:
+
+```{r chicago-hist, fig.height=3.5, fig.width=5.5, fig.align='center'}
+hist(
+  chicago$income,
+  breaks = 10,
+  col = "lightblue",
+  border = "white",
+  main = "Distribution of Household Income in Public Housing",
+  xlab = "Income (in Thousands of Dollars)",
+  ylab = "Frequency"
+)
+```
+
+*Question:* If we check the histogram of this data, it's heavily right-skewed. Does the normality assumption hold? Why is the $t$-distribution still the safer choice here over the normal distribution?
+
+\textcolor{violet}{\textbf{Answer:}} 
+
+
+## 4. Example: Belief in Life After Death (Proportions)
+
+For proportions, the Central Limit Theorem allows us to use the normal approximation (Wald interval) if the sample size is large enough. The standard error for a proportion is:
+
+$$\widehat{SE}(\widehat{\pi}) = \sqrt{\frac{\widehat{\pi}(1-\widehat{\pi})}{n}}$$
+
+*(Note: The textbook also discusses forming CIs for proportions by rederiving them directly from the pivotal statistic, known as the Score interval. We are using the standard Wald interval here).*
+
+In a 2018 survey, 1720 out of 2123 people said they believed in life after death.
+
+**Task:** Calculate the 90% and 99% confidence intervals for the true population proportion.
+
+```{r ci-proportion, eval=FALSE}
+n_prop <- 2123
+x_prop <- 1720
+
+# Point estimate
+pi_hat <- ____
+
+# Calculate Standard Error
+se_prop <- ____
+
+# Normal quantiles
+z_90 <- qnorm(____)
+z_99 <- qnorm(____)
+
+# 90% CI: vector c(lower, upper)
+ci_90 <- ____
+cat("90% CI: (", round(ci_90[1], 4), ",", round(ci_90[2], 4), ")\n")
+
+# 99% CI: vector c(lower, upper)
+ci_99 <- ____
+cat("99% CI: (", round(ci_99[1], 4), ",", round(ci_99[2], 4), ")\n")
+```
+
+**Compare with R:** Try running `prop.test(x = 1720, n = 2123, conf.level = 0.90)` in your console. Does the interval exactly match your hand calculation? Why might it be slightly different?
+
+\textcolor{violet}{\textbf{Answer:}} 
+
+## 5. Example: Two Groups (Difference in Means)
+
+When comparing two independent groups, assuming equal variance between them is often unrealistic in practice. Let's look at an extreme example to see why.
+
+* **Group 1:** $n_1 = 10, \quad \bar{X}_1 = 100, \quad S_1 = 5$
+* **Group 2:** $n_2 = 40, \quad \bar{X}_2 = 90, \quad S_2 = 25$
+
+Notice that Group 2 is much larger, but also has a much larger variance.
+
+**Task:** Calculate the Standard Error for both the Equal Variance case and the Unequal Variance case.
+
+$$\text{Equal Variance } SE = \sqrt{S_p^2 \left(\frac{1}{n_1} + \frac{1}{n_2}\right)} \quad \text{where} \quad S_p^2 = \frac{(n_1-1)S_1^2 + (n_2-1)S_2^2}{n_1+n_2-2}$$
+
+$$\text{Unequal Variance } SE = \sqrt{\frac{S_1^2}{n_1} + \frac{S_2^2}{n_2}}$$
+
+```{r ci-two-groups, eval=FALSE}
+n1 <- 10; xbar1 <- 100; s1 <- 5
+n2 <- 40; xbar2 <- 90;  s2 <- 25
+
+# Equal Variance SE
+sp2      <- ____
+se_equal <- ____
+cat("Equal Variance SE:", round(se_equal, 3), "\n")
+
+# Unequal Variance SE
+se_unequal <- ____
+cat("Unequal Variance SE:", round(se_unequal, 3), "\n")
+```
+
+Notice that the two standard errors are quite different ($8.004$ vs. $4.257$). When we assume equal variance, the much larger variance of Group 2 inflates the pooled estimate, which artificially increases the standard error for Group 1 and makes the resulting confidence interval nearly twice as wide. In practice, we rarely have a good reason to assume equal variances, so using the unequal variance (Welch) approach is standard.
+
+For the unequal variance degrees of freedom, the formula (Welch's approximation) is complex, but for hand calculations, you can safely use the lower bound: $\min(n_1-1, n_2-1)$. In this case, we would use $10 - 1 = 9$ degrees of freedom.
+
+**Task:** Using the standard errors calculated above, compute the 95% confidence intervals for both the pooled and Welch methods and compare their boundaries:
+
+```{r ci-two-groups-intervals, eval=FALSE}
+diff_mean <- xbar1 - xbar2
+
+# Equal variance CI: find t-quantile and construct interval vector c(lower, upper)
+t_pool  <- qt(____, df = ____)
+ci_pool <- ____
+
+# Unequal variance CI: find conservative t-quantile and construct interval vector
+t_welch  <- qt(____, df = ____)
+ci_welch <- ____
+
+cat("Equal Variance 95% CI:   (", round(ci_pool[1], 2), ",", round(ci_pool[2], 2), ")\n")
+cat("Unequal Variance 95% CI: (", round(ci_welch[1], 2), ",", round(ci_welch[2], 2), ")\n")
+```
+
+**Question:** Is assuming equal variance merely a neutral mathematical convenience, or can it impact your conclusions?
+
+\textcolor{violet}{\textbf{Answer:}} 
+
+## 6. Visualizing Confidence Intervals (Simulation)
+
+To really understand what "95% Confidence" means, let's simulate 100 different samples from a known population and calculate a 95% confidence interval for each one.
+
+We will draw samples of size $n=30$ from a Normal distribution with a true mean of $\mu = 50$ and true standard deviation $\sigma = 10$.
+
+*(Remove `eval=FALSE` from the chunk header when you are ready to run the code and plot the intervals).*
+
+```{r ci-sim, warning=FALSE, message=FALSE, fig.height=3.8, fig.width=6, fig.align='center', eval=FALSE}
+set.seed(135) # Set seed for reproducibility
+
+n_sim <- 100
+n_samp <- 30
+true_mu <- 50
+true_sigma <- 10
+
+results <- data.frame(
+  sim_id = 1:n_sim,
+  sample_mean = numeric(n_sim),
+  lower_ci = numeric(n_sim),
+  upper_ci = numeric(n_sim)
+)
+
+for (i in 1:n_sim) {
+  # Draw a sample
+  samp <- rnorm(n_samp, mean = true_mu, sd = true_sigma)
+  
+  # Calculate statistics
+  results$sample_mean[i] <- mean(samp)
+  se <- sd(samp) / sqrt(n_samp)
+  margin <- qt(____, df = ____) * se
+  
+  # Store bounds
+  results$lower_ci[i] <- results$sample_mean[i] - margin
+  results$upper_ci[i] <- results$sample_mean[i] + margin
+}
+
+# Task: Create a logical column that is TRUE if the interval covers true_mu,
+# and FALSE if it does not.
+results$covers <- ____
+
+# Plot the 100 intervals
+ggplot(results, aes(x = sample_mean, y = sim_id, color = covers)) +
+  geom_point(size = 1.2) +
+  geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci), height = 0, linewidth = 0.6) +
+  geom_vline(xintercept = true_mu, linetype = "dashed", color = "black", linewidth = 0.8) +
+  theme_minimal() +
+  labs(
+    title = "100 Simulated 95% Confidence Intervals",
+    subtitle = "How many intervals actually capture the true mean?",
+    x = "Sample Mean",
+    y = "Simulation Number",
+    color = "Covers True Mean?"
+  ) +
+  scale_color_manual(values = c("FALSE" = "firebrick", "TRUE" = "steelblue"))
+```
+
+```{r ci-sim-summary, eval=FALSE}
+n_misses <- sum(!results$covers)
+cat("Observed misses:", n_misses, "out of", n_sim, "\n")
+cat("Observed coverage rate:", mean(results$covers), "\n")
+```
+
+**Discussion Note: Why aren't there exactly 5 intervals missing the true mean?**
+
+* Each confidence interval construction is an independent trial with a $0.05$ probability of failing to cover $\mu$.
+* If we define $Y$ as the total number of non-covering intervals out of $100$, then $Y \sim \text{Binomial}(n = 100, p = 0.05)$.
+* The expected number of misses is $E(Y) = 100 \times 0.05 = 5$.
+
+* **Why it's not always 5:**
+  
+  \textcolor{violet}{\textbf{Explanation:}} 
+
+* **Probability of exactly 5:**
+  
+  \textcolor{violet}{\textbf{Explanation:}} 
+
+## 7. Appendix: Estimating Variance - Why $S^2$ is Unbiased vs $1/n$
+
+Let us find an **unbiased** estimator for the population variance $\sigma^2$. First, look at the expected value of the sum of squared deviations from the sample mean, and expand it by adding and subtracting the true population mean $\mu$:
+
+$$\sum_{i=1}^n (X_i - \bar{X})^2 = \sum_{i=1}^n ((X_i - \mu) - (\bar{X} - \mu))^2$$
+
+**(Complete on the board)**
+
+\vspace{4cm}
+
+**Conclusion:**
+If we used the intuitive $\frac{1}{n}$ formula to estimate variance, the expected value would be:
+$$E\left[\frac{1}{n}\sum_{i=1}^n (X_i - \bar{X})^2\right] = \frac{n-1}{n}\sigma^2$$
+This means dividing by $n$ creates a **biased** estimator that systematically underestimates the true population variance.
+
+However, if we define our sample variance $S^2$ by dividing by $n-1$, we perfectly cancel out the $(n-1)$ term:
+$$E\left[\frac{1}{n-1}\sum_{i=1}^n (X_i - \bar{X})^2\right] = \frac{n-1}{n-1}\sigma^2 = \sigma^2$$
+This is why $S^2$ is an **unbiased** estimator of $\sigma^2$.
+
