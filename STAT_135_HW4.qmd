@@ -1,0 +1,138 @@
+---
+title: "STAT 135 HW4 R Calculations"
+author: "Yuan Xie"
+format: pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+```
+
+# 1. Problem 4.12
+
+## data import
+```{r}
+income <- read_table("Income.dat.txt")
+head(income)
+```
+
+## (a)
+```{r}
+ggplot(income, aes(x = income, y = race, fill = race)) +
+  geom_boxplot() +
+  labs(
+    x = "Annual Income (thousands of dollars)",
+    y = "Race"
+  )
+```
+
+## (b) parameters
+```{r}
+black <- income$income[income$race == "B"]
+white <- income$income[income$race == "W"]
+
+n_B <- length(black)
+n_W <- length(white)
+
+mean_B <- mean(black)
+mean_W <- mean(white)
+
+sd_B <- sd(black)
+sd_W <- sd(white)
+
+n_B
+n_W
+mean_B
+mean_W
+sd_B
+sd_W
+```
+
+## (c)
+```{r}
+black <- income$income[income$race == "B"]
+white <- income$income[income$race == "W"]
+
+# Difference in sample means (Black - White)
+mean_diff <- mean_B - mean_W
+
+# Standard error without assuming equal variances
+SE <- sqrt(sd_B^2 / n_B + sd_W^2 / n_W)
+
+# Welch-Satterthwaite degrees of freedom
+df <- (sd_B^2 / n_B + sd_W^2 / n_W)^2 /
+      ((sd_B^2 / n_B)^2 / (n_B - 1) +
+       (sd_W^2 / n_W)^2 / (n_W - 1))
+
+# Critical t value for a 90% CI
+t_star <- qt(0.95, df)
+
+# Construct the confidence interval
+lower <- mean_diff - t_star * SE
+upper <- mean_diff + t_star * SE
+
+c(lower, upper)
+```
+
+# 2. Problem 4.14
+
+## data import
+```{r}
+students <- read_table("Students.dat.txt")
+head(students)
+```
+
+## (b)
+```{r}
+female <- students$tv[students$gender == 0]
+male <- students$tv[students$gender == 1]
+
+# Sample sizes
+n_F <- length(female)
+n_M <- length(male)
+
+# Sample means
+mean_F <- mean(female)
+mean_M <- mean(male)
+
+# Sample standard deviations
+sd_F <- sd(female)
+sd_M <- sd(male)
+
+# Difference in sample means (Female - Male)
+mean_diff <- mean_F - mean_M
+
+# Standard error
+SE <- sqrt(sd_F^2 / n_F + sd_M^2 / n_M)
+
+# Welch-Satterthwaite degrees of freedom
+df <- (sd_F^2 / n_F + sd_M^2 / n_M)^2 /
+      ((sd_F^2 / n_F)^2 / (n_F - 1) +
+       (sd_M^2 / n_M)^2 / (n_M - 1))
+
+# Critical t value for a 95% CI
+t_star <- qt(0.975, df)
+
+# Construct the 95% confidence interval
+lower <- mean_diff - t_star * SE
+upper <- mean_diff + t_star * SE
+
+c(lower, upper)
+```
+
+
+
+
+
+
+
+
+
+
+
+
