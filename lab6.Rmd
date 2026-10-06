@@ -1,0 +1,535 @@
+---
+title: "Confidence Intervals and MLE Asymptotics"
+subtitle: "Student Version"
+author: "STAT 135 Lab 6"
+date: "Fall 2026"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, error = FALSE,
+  fig.width = 7, fig.height = 4.5, fig.align = "center"
+)
+set.seed(13506)
+```
+
+<!-- #region -->
+This lab connects three settings: paired measurements, a regression
+slope, and a one-parameter MLE. In each, we assemble a confidence interval
+from an estimate, an estimated standard error, and a critical value.
+We will use a 95% confidence level unless a question specifies otherwise.
+
+> Note that we use R **as a calculator**: we build the calculations from `mean()`, `sd()`,
+`sum()`, and `qt()`, then use `t.test()` and `lm()` to verify the results. This is what you are expected to do in homeworks. 
+
+
+## 1. Paired Data: Before and After Measurements
+
+Rice, Section 11.3.1, page 447, reports platelet aggregation for 11 people
+before and after smoking a cigarette. The measurements are percentages
+of platelets that aggregated following a stimulus. 
+<!-- #endregion -->
+
+```{r paired-data, fig.width=5, fig.height=5}
+paired <- read.csv("rice_p447_paired.csv")
+
+limits <- range(paired$before, paired$after)
+plot(paired$before, paired$after, pch = 19, col = "steelblue",
+     xlim = limits, ylim = limits, asp = 1,
+     xlab = "Before (%)", ylab = "After (%)",
+     main = "Platelet Aggregation: Matched Measurements")
+abline(a = 0, b = 1, lty = 2, col = "gray40")
+```
+
+### Understand the pairs
+
+The same person supplies the before and after measurements. We therefore
+keep each pair together throughout the analysis. The dashed line represents
+no change: a point above it has a larger after measurement. The plot shows
+a strong positive association between the two measurements.
+
+**Quick checkpoint 1:** True or false: 11 people measured twice give us 22 independent observations.
+
+### Organizing the measurements
+
+The supplied file is in **wide format**, with before and after in separate
+columns. In **long format**, the same data have one measurement per row,
+a condition column, and a person ID. Preserving the ID is essential.
+
+```{r paired-long-format}
+paired_long <- reshape(paired,
+                       varying = c("before", "after"),
+                       v.names = "aggregation",
+                       timevar = "condition",
+                       times = c("before", "after"),
+                       idvar = "id", direction = "long")
+head(paired_long)
+```
+
+Define $D_i=\text{after}_i-\text{before}_i$ and let
+$\mu_D=\mathrm{E}(D_i)$. Under independent, identically distributed normal
+differences, the interval for $\mu_D$ is
+$$
+\bar D\ \pm\ t_{n-1,\,0.975}\frac{S_D}{\sqrt n},
+$$
+where $S_D$ is the sample standard deviation of the differences and
+$t_{\nu,\,0.975}$ is the 0.975 quantile of a $t$ distribution with $\nu$
+degrees of freedom. R computes it with `qt(0.975, df = ...)`.
+
+### Calculate the interval step by step
+
+We calculate the changes first, then treat them as a single sample.
+`sd(d)` measures variation among individual changes. Dividing by
+$\sqrt n$ estimates the standard error of their average. We assemble
+the margin of error from the $t$ critical value and this SE.
+
+```{r walkthrough-2}
+d <- paired$after - paired$before
+n_pair <- length(d)
+d_bar <- mean(d)
+sd_d <- sd(d)
+se_d <- sd_d / sqrt(n_pair)
+t_star <- qt(0.975, df = n_pair - 1)
+ci_paired <- d_bar + c(-1, 1) * t_star * se_d
+c(mean_change = d_bar, SD = sd_d, SE = se_d,
+  critical_value = t_star, lower = ci_paired[1], upper = ci_paired[2])
+```
+
+The average increase is about 10.273 percentage points. The estimated
+SE is 2.405, giving the 95% interval $(4.914,15.631)$ percentage points
+for the population mean change. As we have talked about in the lasst his is not an interval containing
+95% of individual changes: confidence refers to repeated-sample
+coverage of the fixed population mean.
+
+The exact $t$ result assumes independent, identically distributed
+normal **differences**. With only 11 pairs, strong skewness or outliers
+in the differences would matter; choosing a $t$ quantile does not
+remove that concern.
+
+**Quick checkpoint 2:** For a 99% two-sided interval, would we use `qt(0.99, ...)` or `qt(0.995, ...)`?
+
+### Compare with an analysis that ignores pairing
+
+For comparison only, pretend these measurements came from two
+independent groups. We use the same difference of means but estimate
+its SE without a covariance term. Let $A$ denote after and $B$ before:
+$$
+a=\frac{s_A^2}{n_A},\qquad b=\frac{s_B^2}{n_B},\qquad
+\widehat{\mathrm{SE}}_{\mathrm{ind}}=\sqrt{a+b}.
+$$
+For the Welch interval, use the approximate degrees of freedom
+$$
+\nu=\frac{(a+b)^2}{a^2/(n_A-1)+b^2/(n_B-1)} 
+\geq \min\{n_A - 1, n_B - 1\}. 
+$$
+The following is a deliberately incorrect independence analysis of
+these paired data, included to show why recognizing the design matters.
+
+```{r walkthrough-3}
+n_after <- length(paired$after)
+n_before <- length(paired$before)
+a <- var(paired$after) / n_after
+b <- var(paired$before) / n_before
+se_ind <- sqrt(a + b)
+df_ind <- (a + b)^2 / (a^2 / (n_after - 1) + b^2 / (n_before - 1))
+ci_ind <- (mean(paired$after) - mean(paired$before)) +
+  c(-1, 1) * qt(0.975, df = df_ind) * se_ind
+knitr::kable(data.frame(
+  calculation = c("Paired", "Ignoring pairing"),
+  SE = c(se_d, se_ind),
+  lower = c(ci_paired[1], ci_ind[1]),
+  upper = c(ci_paired[2], ci_ind[2]),
+  width = c(diff(ci_paired), diff(ci_ind))
+), digits = 3)
+```
+
+```{r}
+# Sample correlation calculation 
+A <- paired$after
+B <- paired$before
+
+sample_cov <- sum((A - mean(A)) * (B - mean(B))) /
+  (length(A) - 1)
+
+r_AB <- sample_cov / (sd(A) * sd(B))
+r_AB
+
+cor(A, B)  # Same result
+```
+
+The point estimate is unchanged, but ignoring pairing gives a much
+wider interval. The reason is the covariance term:
+$$
+\mathrm{Var}(A-B)=\mathrm{Var}(A)+\mathrm{Var}(B)
+-2\mathrm{Cov}(A,B).
+$$
+Here the before-after correlation is about 0.901. Positive covariance
+reduces the variance of a difference. With independent pairs, divide
+that variance by the number of pairs to get the variance of the mean
+change. Pairing removes persistent differences between people and can
+improve precision. It is not universally variance-reducing: a negative
+within-pair covariance would have the opposite effect.
+
+> **Question** : Why does it make sense that a negative correlation increases the variance of the difference? 
+    
+### Check the result with R
+
+Now that we have assembled the intervals ourselves, we can check them
+with `t.test()`. The first argument minus the second determines the
+direction of the difference. `paired = TRUE` tells R to use within-person
+differences; `$conf.int` extracts just the interval, without test output.
+The one-sample call on `d` should reproduce the paired calculation.
+
+```{r walkthrough-4}
+check_paired <- t.test(paired$after, paired$before,
+                      paired = TRUE, conf.level = 0.95)$conf.int
+check_d <- t.test(d, conf.level = 0.95)$conf.int
+check_ind <- t.test(paired$after, paired$before,
+                   paired = FALSE, conf.level = 0.95)$conf.int
+rbind(paired = check_paired, differences = check_d,
+      ignoring_pairing = check_ind)
+```
+
+R pairs observations by their positions in the two vectors. Keep
+rows aligned by person ID; independently sorting the two columns
+would destroy the matching even if `paired = TRUE` were specified.
+
+**Quick checkpoint 3:** If we switch from after minus before to before minus after, does the interval's width change?
+
+## 2. Regression: Living Area and Sale Price
+
+We use 2,930 Ames, Iowa, home sales from the dataset documented by
+De Cock (2011). The supplied CSV contains the two columns needed here,
+with names matching `AmesHousing::make_ames()`. `Gr_Liv_Area` is
+above-ground living area in square feet and `Sale_Price` is in dollars.
+
+```{r ames-data-and-plots, fig.width=8, fig.height=4}
+ames <- read.csv("ames_area_price.csv")
+stopifnot(nrow(ames) == 2930, !anyNA(ames),
+          all(ames$Gr_Liv_Area > 0), all(ames$Sale_Price > 0))
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+plot(Sale_Price ~ Gr_Liv_Area, data = ames,
+     pch = 19, cex = 0.35, col = "gray45",
+     xlab = "Living area (sq ft)", ylab = "Sale price ($)",
+     main = "Original Axes")
+plot(Sale_Price ~ Gr_Liv_Area, data = ames, log = "xy",
+     pch = 19, cex = 0.35, col = "gray45",
+     xlab = "Living area (sq ft)", ylab = "Sale price ($)",
+     main = "Logarithmic Axes")
+par(mfrow = c(1, 1))
+```
+
+For inference, model the transformed variables
+$$
+x_i=\log(\text{living area}_i),\qquad
+Y_i=\log(\text{sale price}_i),\qquad
+Y_i=\beta_0+\beta_1x_i+\epsilon_i.
+$$
+Conditional on the predictors, iid $N(0,\sigma^2)$ errors give the exact
+$t$ interval below. Independence, linearity of the conditional mean,
+and common error variance are substantive model assumptions.
+
+The calculator ingredients are
+$$
+S_{xx}=\sum_i(x_i-\bar x)^2,\qquad
+S_{xy}=\sum_i(x_i-\bar x)(y_i-\bar y),
+$$
+$$
+\widehat\beta_1=\frac{S_{xy}}{S_{xx}},\quad
+\widehat\beta_0=\bar y-\widehat\beta_1\bar x,\quad
+e_i=y_i-(\widehat\beta_0+\widehat\beta_1x_i),
+$$
+$$
+s^2=\frac{\sum_i e_i^2}{n-2},\qquad
+\widehat{\mathrm{SE}}(\widehat\beta_1)=\sqrt{\frac{s^2}{S_{xx}}}.
+$$
+A 95% CI is $\widehat\beta_1\pm t_{n-2,\,0.975}
+\widehat{\mathrm{SE}}(\widehat\beta_1)$.
+
+### Calculate the regression interval step by step
+
+We first create the logged variables explicitly. Setting `log="xy"`
+in a plot changes the axes but does not transform the stored data for
+a later model. Then we calculate the coefficients, fitted residuals,
+residual variance, and slope SE in that order.
+
+The variance divisor is $n-2$ because we estimated an intercept and a
+slope. Notice that the slope SE depends on both residual variation and
+predictor spread; `sd(y)/sqrt(n)` would estimate the SE of a response
+mean, not a slope.
+
+```{r walkthrough-5}
+x <- log(ames$Gr_Liv_Area)
+y <- log(ames$Sale_Price)
+n_reg <- length(y)
+Sxx <- sum((x - mean(x))^2)
+Sxy <- sum((x - mean(x)) * (y - mean(y)))
+b1 <- Sxy / Sxx
+b0 <- mean(y) - b1 * mean(x)
+residual <- y - (b0 + b1 * x)
+s2 <- sum(residual^2) / (n_reg - 2)
+se_b1 <- sqrt(s2 / Sxx)
+ci_b1 <- b1 + c(-1, 1) * qt(0.975, df = n_reg - 2) * se_b1
+c(intercept = b0, slope = b1, slope_SE = se_b1,
+  lower = ci_b1[1], upper = ci_b1[2])
+```
+
+The estimated slope is about 0.908, its estimated SE is 0.0160,
+and the 95% CI is approximately (0.876, 0.939).
+
+**Quick checkpoint 4:** If the SE stays fixed, does moving from 95% to 99% confidence make the slope interval wider or narrower?
+
+### Using the model-fitting interface
+
+`lm(response ~ predictor, data = data_frame)` fits a linear mean model
+with an intercept by default. The expression to the left of `~` is the
+response; the expression to the right specifies the predictor.
+`log()` can be written inside the formula.
+
+For a fitted model named `fit`, `coef(fit)` extracts coefficients,
+`summary(fit)$coefficients[, 1:2]` extracts estimates and SEs without
+p-values, and `confint(fit, level = 0.95)` returns coefficient CIs.
+The function's name is **`confint()`**, with no dot.
+
+### Fit the same model with lm()
+
+We now fit the same log-log model with `lm()`. The coefficient
+estimates, slope SE, and slope interval should match our calculator
+results. To draw the fitted straight line with `abline(fit)`, we plot
+log-price against log-area, the coordinates used by the model.
+
+```{r walkthrough-6}
+fit <- lm(log(Sale_Price) ~ log(Gr_Liv_Area), data = ames)
+coef(fit)
+summary(fit)$coefficients[, 1:2]
+ci_lm <- confint(fit, "log(Gr_Liv_Area)", level = 0.95)
+ci_lm
+plot(x, y, pch = 19, cex = 0.4, col = "gray60",
+     xlab = "log(living area)", ylab = "log(sale price)",
+     main = "Fitted Log-Log Regression")
+abline(fit, col = "firebrick", lwd = 2)
+```
+
+**Quick checkpoint 5:** In `lm(log(Sale_Price) ~ log(Gr_Liv_Area))`, which variable is the response?
+
+### Interpret the fit and check assumptions
+
+The fitted slope is about 0.908: a 1% increase in area is associated
+with approximately a 0.908% increase in fitted geometric-mean price.
+The interval concerns this population slope, not the price of an
+individual house. This observational association is not automatically
+a causal effect of adding space.
+
+The normal, constant-variance error assumptions also need attention.
+A residual-versus-fitted plot can reveal curvature or changing spread;
+a normal Q-Q plot helps inspect tail departures. These plots show
+outliers and tail departures, so the model assumptions should not be
+accepted automatically. Large sample size alone does not fix an SE
+formula that ignores heteroskedasticity or dependence.
+
+```{r walkthrough-7}
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+plot(fitted(fit), resid(fit), pch = 19, cex = 0.4, col = "gray50",
+     xlab = "Fitted log-price", ylab = "Residual",
+     main = "Residuals vs Fitted")
+abline(h = 0, lty = 2, col = "firebrick")
+qqnorm(resid(fit), pch = 19, cex = 0.4, main = "Normal Q-Q Plot")
+qqline(resid(fit), col = "firebrick", lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+## 3. MLE Asymptotics: The Geometric Model
+
+For iid observations and a regular one-parameter model, define
+$$
+I(\theta)=-\mathrm E_\theta\left[
+\frac{\partial^2}{\partial\theta^2}\log f(X;\theta)\right],
+\qquad I_n(\theta)=nI(\theta).
+$$
+$I(\theta)$ is information in **one observation**; $I_n(\theta)$ is
+information in the **whole sample**. The derivatives are of the
+**log** density or PMF, and the expectation uses the same parameter.
+
+For a true interior parameter $\theta_0$, under regularity conditions,
+$$
+\sqrt{nI(\theta_0)}(\widehat\theta_n-\theta_0)
+\xrightarrow{D}N(0,1).
+$$
+Thus a large-sample approximation is
+$$
+\widehat\theta_n\ \dot\sim\ N\left(\theta_0,
+\frac{1}{nI(\theta_0)}\right),\qquad
+\widehat{\mathrm{SE}}(\widehat\theta_n)
+=\frac{1}{\sqrt{I_n(\widehat\theta_n)}}.
+$$
+A Wald interval uses this plug-in SE and `qnorm(0.975)`. This is an
+asymptotic statement, not an assertion of exact normality or exact
+finite-sample variance. The regularity conditions include a correctly
+specified, identifiable model and sufficient smoothness; a
+parameter-independent support alone is not the entire justification.
+
+### Read the information formula
+
+Information describes how sharply the log-likelihood is curved on
+average. Expected information has averaged out the sample randomness;
+it is a function of the parameter, not the particular observations.
+For iid data, information adds across observations.
+
+For example, if $I(\theta_0)=5$ and $n=100$, then $I_n(\theta_0)=500$.
+The approximate variance is $1/500=0.002$, while the approximate SE is
+$1/\sqrt{500}\approx0.0447$. Keeping information, variance, and SE
+separate prevents an extra or missing square root in a CI.
+
+### What is one geometric observation?
+
+An experiment consists of independent Bernoulli trials with constant
+success probability $\pi\in(0,1)$, continued until the first success.
+Let $X$ count **trials including that success**:
+$$
+f(x;\pi)=(1-\pi)^{x-1}\pi,\quad x=1,2,\ldots,\qquad
+\mathrm E_\pi(X)=\frac1\pi.
+$$
+Our sample contains the counts from $n$ independent repetitions of this
+experiment. In R, `rgeom()` instead counts **failures before** the first
+success; check the convention when translating the model into code.
+
+### Simulate geometric observations
+
+For example, the trial sequences `0,0,1`; `1`; and `0,1` give
+trials-to-success counts of 3, 1, and 2. Each count is one geometric
+observation. To simulate this convention in R, add 1 to the
+failures-to-success count produced by `rgeom()`.
+
+```{r walkthrough-9}
+set.seed(13506)
+n_geom <- 100
+p_true <- 0.3
+x_geom <- rgeom(n_geom, prob = p_true) + 1
+head(x_geom)
+```
+
+**Quick checkpoint 6:** If `rgeom()` returns 0, how many trials occurred before and including the first success?
+
+### Derive the MLE and Fisher information
+
+Independence gives
+$$
+\ell(\pi)=\pi^n(1-\pi)^{\sum_i x_i-n},\qquad
+L(\pi)=n\log\pi+\left(\sum_i x_i-n\right)\log(1-\pi).
+$$
+The score is
+$$
+L'(\pi)=\frac n\pi-\frac{\sum_i x_i-n}{1-\pi}.
+$$
+Setting it to zero yields $n=\pi\sum_i x_i$, so
+$\widehat\pi=n/\sum_i x_i=1/\bar x$.
+For a single observation,
+$$
+\frac{\partial\log f}{\partial\pi}
+=\frac1\pi-\frac{X-1}{1-\pi},\qquad
+\frac{\partial^2\log f}{\partial\pi^2}
+=-\frac1{\pi^2}-\frac{X-1}{(1-\pi)^2}.
+$$
+Hence
+$$
+I(\pi)=\frac1{\pi^2}+\frac{1/\pi-1}{(1-\pi)^2}
+=\frac1{\pi^2(1-\pi)},\qquad
+I_n(\pi)=\frac n{\pi^2(1-\pi)}.
+$$
+The full-sample derivative already includes all $n$ contributions.
+Multiplying its expected negative second derivative by $n$ again would
+incorrectly count information twice.
+
+For samples containing at least one $x_i>1$, the MLE is interior.
+If all $x_i=1$, the maximizer is the boundary $\pi=1$ when that boundary
+is allowed; on the open parameter space there is only a supremum.
+The interior Wald approximation does not apply to that fitted boundary.
+
+### Estimate the standard error and form a Wald interval
+
+For fixed $0<\pi_0<1$ and large $n$,
+$$
+\widehat\pi_n\ \dot\sim\ N\left(\pi_0,
+\frac{\pi_0^2(1-\pi_0)}n\right),\qquad
+\widehat{\mathrm{SE}}=\widehat\pi\sqrt{\frac{1-\widehat\pi}{n}}.
+$$
+Consistency and continuity justify plugging in the MLE:
+$$
+\frac{\sqrt n(\widehat\pi_n-\pi_0)}
+{\widehat\pi_n\sqrt{1-\widehat\pi_n}}\xrightarrow{D}N(0,1).
+$$
+The interval is
+$\widehat\pi\pm z_{0.975}\widehat\pi\sqrt{(1-\widehat\pi)/n}$.
+
+The Fisher-information
+variance is a large-sample approximation, not generally an exact
+finite-sample variance of $1/\bar X$.
+
+Small samples may give skewed sampling distributions and poor Wald
+coverage. An all-ones sample gives a
+boundary estimate (an estimate at the edge of the allowed parameter space) with a misleading zero plug-in SE. This makes the Wald interval collapse to a single point, which is a failure of the boudary approximation rather than evidence of perfect certainty. In addition, endpoints can leave $[0,1]$. In that case, simply clipping endpoints, i.e. intersecting the interval with [0,1], although removing the invalid values, does not establish nominal coverage. The code flags a boundary estimate rather than reporting that degenerate interval.
+
+```{r walkthrough-11}
+p_hat <- 1 / mean(x_geom)
+if (p_hat <= 0 || p_hat >= 1) {
+  stop("Boundary estimate: the interior Wald calculation is not appropriate.")
+}
+I_one_hat <- 1 / (p_hat^2 * (1 - p_hat))
+I_sample_hat <- n_geom * I_one_hat
+se_hat <- 1 / sqrt(I_sample_hat)
+ci_geom <- p_hat + c(-1, 1) * qnorm(0.975) * se_hat
+c(MLE = p_hat, information_one = I_one_hat,
+  information_sample = I_sample_hat, estimated_SE = se_hat,
+  lower = ci_geom[1], upper = ci_geom[2])
+```
+
+**Quick checkpoint 7:** True or false: `1 / I_sample_hat` is the estimated standard error.
+
+### Visualize the sampling distribution
+
+We now repeat the entire sampling-and-estimation process 2,000 times.
+Each histogram entry is an MLE from one sample of 100 geometric counts.
+The individual counts are discrete and right-skewed, but the distribution
+of their MLE becomes approximately normal as the sample size grows.
+
+Because this is a simulation, we know $\pi_0=0.3$ and can compare the
+empirical SD with $0.3\sqrt{0.7/100}\approx0.0251$. In real data the
+true parameter is unknown, so we use a plug-in SE instead.
+
+```{r walkthrough-12}
+set.seed(135061)
+B <- 2000
+estimates <- replicate(B, {
+  draw <- rgeom(n_geom, prob = p_true) + 1
+  1 / mean(draw)
+})
+asym_sd <- p_true * sqrt((1 - p_true) / n_geom)
+c(empirical_mean = mean(estimates), truth = p_true,
+  empirical_SD = sd(estimates), asymptotic_SD = asym_sd)
+hist(estimates, probability = TRUE, breaks = 30,
+     col = "gray85", border = "white",
+     xlab = "MLE from one sample", main = "Sampling Distribution of the MLE")
+curve(dnorm(x, mean = p_true, sd = asym_sd),
+      add = TRUE, col = "firebrick", lwd = 2)
+abline(v = p_true, lty = 2, col = "navy")
+legend("topright", legend = c("Normal approximation", "True probability"),
+       col = c("firebrick", "navy"), lty = c(1, 2), lwd = 2, bty = "n")
+```
+
+**Quick checkpoint 8:** If we quadruple the sample size, approximately what happens to the spread of the MLE histogram?
+
+## 4. Attendance Question: Poisson Information
+
+Suppose $X_1,\ldots,X_n$ are iid Poisson$(\lambda)$, with $\lambda>0$:
+$$
+f(x;\lambda)=\frac{\lambda^xe^{-\lambda}}{x!},
+\quad x=0,1,2,\ldots.
+$$
+Recall that $\mathrm E(X)=\mathrm{Var}(X)=\lambda$ and the MLE is
+$\widehat\lambda=\bar X$.
+
+**Attendance checkpoint:** For the Poisson model, what is $I_n(\lambda)$?
+What variance approximation does its reciprocal give for the MLE?
+Is that variance also exact in this example?
+
