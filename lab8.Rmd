@@ -1,0 +1,690 @@
+---
+title: "Consistency, the Delta Method, and Bootstrap"
+subtitle: "Student Version"
+author: "STAT 135 Lab 8"
+date: "Fall 2026"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = TRUE, error = FALSE,
+  fig.width = 7, fig.height = 4.5, fig.align = "center"
+)
+set.seed(13508)
+```
+
+How do we justify a confidence interval when our estimator is a nonlinear
+function of something familiar, or when its standard error has no simple
+formula? This lab connects consistency, the delta method, and resampling.
+We begin with sample variance and standard deviation, work through
+log-odds, and then bootstrap a logistic regression coefficient.
+
+This is a guided walkthrough: all code is complete and runs in order.
+Pause at the checkpoints to discuss the ideas with a partner. Keep this
+Rmd beside the supplied `data` folder. Statistical calculations use base
+R; `knitr` formats tables. No data-package installation or internet
+connection is needed to execute the code. All logarithms are natural logs.
+
+Our notation follows the course modules on the
+[delta method](https://stat135.berkeley.edu/fall-2026/Modules/11-DeltaMethod.html),
+[bootstrap](https://stat135.berkeley.edu/fall-2026/Modules/12-Bootstrap.html),
+[efficiency and MSE](https://stat135.berkeley.edu/fall-2026/Modules/13-FiniteProperties.html), and
+[consistency](https://stat135.berkeley.edu/fall-2026/Modules/14-Consistency.html).
+We use $\xrightarrow{P}$ for convergence in probability and
+$\xrightarrow{D}$ for convergence in distribution. Write $z_{0.975}$ for
+the 0.975 quantile of a standard normal distribution, computed by
+`qnorm(0.975)`.
+
+## 1. Behavior of the Sample Variance and Standard Deviation
+
+Suppose $X_1,\ldots,X_n$ are iid with mean $\mu$ and finite variance
+$\sigma^2$. Define
+$$
+S^2=\frac{1}{n-1}\sum_{i=1}^n(X_i-\bar X)^2,
+\qquad S=\sqrt{S^2}.
+$$
+These are the quantities calculated by R's `var()` and `sd()`.
+
+### Consistency from the weak law of large numbers
+
+An estimator is consistent if it converges in probability to its target
+as $n\to\infty$. Rewrite the variance using sample moments:
+$$
+S^2=\frac{n}{n-1}\left\{\frac1n\sum_{i=1}^n X_i^2-\bar X^2\right\}.
+$$
+The weak law of large numbers (WLLN) gives
+$$
+\bar X\xrightarrow{P}\mu,
+\qquad \frac1n\sum_{i=1}^nX_i^2\xrightarrow{P}\mathrm E(X^2).
+$$
+The second limit applies the iid WLLN to $X_i^2$: it needs
+$\mathrm E(X^2)<\infty$, not a finite fourth moment. Since squaring is
+continuous, $\bar X^2\xrightarrow{P}\mu^2$. Combining these limits,
+$$
+S^2\xrightarrow{P}\mathrm E(X^2)-\mu^2=\sigma^2.
+$$
+Finally, the square-root function is continuous on $[0,\infty)$, so the
+continuous mapping theorem gives
+$$
+S=\sqrt{S^2}\xrightarrow{P}\sqrt{\sigma^2}=\sigma.
+$$
+
+**Quick checkpoint 1:** If we replace the divisor $n-1$ by $n$, is the
+resulting variance estimator still consistent? What happens to $n/(n-1)$?
+
+### A second route: mean squared error
+
+For any estimator $T$ of $\theta$,
+$$
+\mathrm{MSE}(T)=\mathrm E[(T-\theta)^2]
+=\mathrm{Var}(T)+\{\mathrm{Bias}(T)\}^2.
+$$
+If $\mathrm{MSE}(T_n)$ tends to zero, then for each $\varepsilon>0$,
+$$
+P(|T_n-\theta|>\varepsilon)
+\leq\frac{\mathrm{MSE}(T_n)}{\varepsilon^2}\longrightarrow0.
+$$
+Thus vanishing MSE implies consistency.
+
+Now assume the fourth central moment
+$\mu_4=\mathrm E[(X-\mu)^4]$ is finite. Because $S^2$ is unbiased,
+$$
+\mathrm{MSE}(S^2)=\mathrm{Var}(S^2)
+=\frac1n\left(\mu_4-\frac{n-3}{n-1}\sigma^4\right)
+\longrightarrow0.
+$$
+This also proves consistency, but uses a stronger moment assumption
+than the WLLN argument. Here $\sigma^4=(\sigma^2)^2$.
+
+**Quick checkpoint 2:** Does being unbiased by itself guarantee that an
+estimator is consistent? Which additional quantity did we control above? 
+
+Can you give an example of an unbiased estimator that is not consistent? 
+
+### Apply the delta method to $S=\sqrt{S^2}$
+
+Assume now that $\sigma>0$ and $\mu_4<\infty$. For $g(t)=\sqrt t$,
+$$
+g'(\sigma^2)=\frac1{2\sigma}.
+$$
+A first-order Taylor approximation around $\sigma^2$ gives
+$$
+S\approx \sigma+\frac{S^2-\sigma^2}{2\sigma}.
+$$
+Therefore the first-order approximations to the mean and variance are
+$$
+\mathrm E(S)\approx\sigma,\qquad
+\mathrm{Var}(S)\approx\frac{\mathrm{Var}(S^2)}{4\sigma^2}
+=\frac{1}{4n\sigma^2}
+\left(\mu_4-\frac{n-3}{n-1}\sigma^4\right).
+$$
+The approximate mean is not an assertion that $S$ is unbiased. In fact,
+concavity of the square root gives $\mathrm E(S)\leq\sigma$.
+For a more refined Taylor approximation, $g''(\sigma^2)=-1/(4\sigma^3)$
+suggests
+$$
+\mathrm E(S)\approx\sigma-\frac{\mathrm{Var}(S^2)}{8\sigma^3}.
+$$
+This second-order expression is an approximation, not an exact bias formula.
+
+The CLT applied to $(X_i-\mu)^2$, together with the negligible effect of
+estimating $\mu$, yields
+$$
+\sqrt n(S^2-\sigma^2)\xrightarrow{D}N(0,\mu_4-\sigma^4).
+$$
+For $\mu_4>\sigma^4$, the delta method then gives the nondegenerate limit
+$$
+\sqrt n(S-\sigma)\xrightarrow{D}
+N\left(0,\frac{\mu_4-\sigma^4}{4\sigma^2}\right).
+$$
+Consistency describes concentration around the target; this distributional
+limit additionally describes the scale and shape of the estimation error.
+
+**Quick checkpoint 3:** Why is the derivative squared in the variance
+formula? Would $\sqrt{\mathrm{Var}(S^2)}$ be the variance of $S$?
+
+### Check the approximations by simulation
+
+For normal observations, $\mu_4=3\sigma^4$, so
+$$
+\mathrm{Var}(S^2)=\frac{2\sigma^4}{n-1},\qquad
+\mathrm{Var}(S)\approx\frac{\sigma^2}{2(n-1)},\qquad
+\mathrm E(S)\approx\sigma-\frac{\sigma}{4(n-1)}.
+$$
+We simulate fresh samples from $N(0,4)$, whose standard deviation is 2.
+Each entry produced by `replicate()` is the standard deviation of one
+fresh dataset.
+
+```{r simulate-standard-deviation}
+set.seed(135081)
+sigma <- 2
+n_values <- c(10, 50, 200, 1000)
+M <- 3000
+
+s_samples <- lapply(n_values, function(n) {
+  replicate(M, sd(rnorm(n, mean = 0, sd = sigma)))
+})
+
+sd_comparison <- data.frame(
+  n = n_values,
+  mean_S = sapply(s_samples, mean),
+  first_order_mean = sigma, # mean based on first-order approximation 
+  second_order_mean = sigma - sigma / (4 * (n_values - 1)), # mean based on first-order approximation 
+  variance_S = sapply(s_samples, var),
+  delta_variance = sigma^2 / (2 * (n_values - 1)),
+  MSE_S2 = sapply(s_samples, function(s) mean((s^2 - sigma^2)^2)),
+  exact_MSE_S2 = 2 * sigma^4 / (n_values - 1)
+)
+knitr::kable(sd_comparison[, 1:4], digits = 4)
+knitr::kable(sd_comparison[, c(1, 5:8)], digits = 4)
+```
+
+The simulated summaries fluctuate because $M$ is finite. The theoretical
+MSE refers to repeating the sampling experiment indefinitely.
+
+```{r plot-standard-deviation, fig.width=7, fig.height=5.5}
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+for (j in seq_along(n_values)) {
+  hist(s_samples[[j]], breaks = 30, probability = TRUE,
+       xlim = c(0.5, 3.5), col = "gray80", border = "gray70",
+       xlab = "Sample standard deviation S", main = paste("n =", n_values[j]))
+  abline(v = sigma, col = "firebrick", lwd = 2)
+}
+par(mfrow = c(1, 1))
+```
+
+All panels use the same horizontal scale. The red line is the population
+standard deviation. Concentration around that line illustrates consistency.
+
+**Quick checkpoint 4:** Which change makes $S$ more concentrated around
+$\sigma$: increasing the sample size $n$, or increasing only the number
+of simulated datasets $M$?
+
+## 2. From a Sample Proportion to Log-Odds
+
+Suppose $X_1,\ldots,X_n$ are iid Bernoulli$(\pi)$, with fixed
+$0<\pi<1$. Our target is
+$$
+\tau=g(\pi)=\log\left(\frac{\pi}{1-\pi}\right).
+$$
+Odds are $\pi/(1-\pi)$; log-odds can be any real number.
+
+### Establish consistency before constructing an interval
+
+The MLE is $\widehat\pi=\bar X$. We have several ways to see its consistency:
+
+* WLLN: $\bar X\xrightarrow{P}\pi$.
+* MSE: $\widehat\pi$ is unbiased and
+  $\mathrm{MSE}(\widehat\pi)=\pi(1-\pi)/n\to0$.
+* The usual MLE consistency theory also applies to this model. Being an
+  MLE alone is not a substitute for checking a theorem's conditions.
+
+By invariance of MLE, for an interior estimate $0<\widehat\pi<1$,
+$$
+\widehat\tau=g(\widehat\pi)
+=\log\left(\frac{\widehat\pi}{1-\widehat\pi}\right)
+$$
+is the MLE of $\tau$. Continuity of $g$ at the true $\pi$ gives
+$\widehat\tau\xrightarrow{P}\tau$.
+
+There is a finite-sample boundary issue: all zeros or all ones give an
+infinite log-odds estimate. The probability of these events is
+$(1-\pi)^n+\pi^n\to0$. They do not alter the large-sample limit for a
+fixed interior $\pi$, but the interval below cannot be used for those
+datasets. Our code checks for them explicitly.
+
+**Quick checkpoint 5:** Invariance tells us that $\widehat\tau$ is an
+MLE. Which theorem tells us it is consistent?
+
+### Use the delta method
+
+Differentiate
+$g(\pi)=\log\pi-\log(1-\pi)$ and combine your derivative with
+$\mathrm{Var}(\widehat\pi)=\pi(1-\pi)/n$.
+
+The derivative and the Bernoulli CLT are
+$$
+g'(\pi)=\frac1\pi+\frac1{1-\pi}=\frac1{\pi(1-\pi)},
+\qquad
+\sqrt n(\widehat\pi-\pi)\xrightarrow{D}N(0,\pi(1-\pi)).
+$$
+The delta method gives
+$$
+\sqrt n(\widehat\tau-\tau)
+\xrightarrow{D}N\left(0,\frac1{\pi(1-\pi)}\right).
+$$
+Thus the large-sample normal approximation has mean $\tau$ and variance
+$1/\{n\pi(1-\pi)\}$. These describe the approximating normal distribution;
+the unmodified log-odds estimator has no finite unconditional mean or
+variance at finite $n$ because of the boundary events above.
+
+### Estimate the SE and justify the substitution
+
+Let $\mathrm{SE}_{\mathrm{asy}}=1/\sqrt{n\pi(1-\pi)}$ denote the
+asymptotic SE. Plug in $\widehat\pi$:
+$$
+\widehat{\mathrm{SE}}(\widehat\tau)
+=\frac1{\sqrt{n\widehat\pi(1-\widehat\pi)}}.
+$$
+The useful consistency statement is the **ratio**
+$$
+\frac{\widehat{\mathrm{SE}}}{\mathrm{SE}_{\mathrm{asy}}}
+=\sqrt{\frac{\pi(1-\pi)}{\widehat\pi(1-\widehat\pi)}}
+\xrightarrow{P}1.
+$$
+Slutsky's theorem therefore gives
+$$
+\frac{\widehat\tau-\tau}{\widehat{\mathrm{SE}}}
+\xrightarrow{D}N(0,1).
+$$
+This is why a 95% Wald interval is
+$\widehat\tau\pm z_{0.975}\widehat{\mathrm{SE}}$.
+
+**Quick checkpoint 6:** Holding $n$ fixed, is the approximate SE of the
+log-odds larger when $\pi=0.5$ or when $\pi=0.05$? What in the formula
+explains this?
+
+### Calculate an example in R
+
+In a hypothetical sample of 200 independent binary outcomes, 60 are
+successes. `qlogis(p)` computes $\log\{p/(1-p)\}$; `plogis(t)` computes
+its inverse, $e^t/(1+e^t)$.
+
+**Check:** Can you write down the 95% confidence interval for $\tau$. 
+
+```{r log-odds-interval}
+n_binary <- 200
+successes <- 60
+pi_hat <- successes / n_binary
+if (pi_hat <= 0 || pi_hat >= 1) {
+  stop("The log-odds Wald interval needs both successes and failures.")
+}
+tau_hat <- qlogis(pi_hat)
+se_tau <- 1 / sqrt(n_binary * pi_hat * (1 - pi_hat))
+ci_tau <- tau_hat + c(-1, 1) * qnorm(0.975) * se_tau
+
+knitr::kable(data.frame(
+  estimate = tau_hat, SE = se_tau,
+  lower = ci_tau[1], upper = ci_tau[2]
+), digits = 4)
+
+# The inverse log-odds transformation is increasing, so the transformed CI is 
+ci_pi <- plogis(ci_tau)
+c(pi_hat = pi_hat, lower = ci_pi[1], upper = ci_pi[2])
+```
+
+The first interval is for population log-odds; the second is for the
+population success probability. Neither describes a range of individual binary
+outcomes. Confidence refers to the long-run coverage of the procedure
+over repeated samples. Small counts of successes or failures can make
+the normal approximation inaccurate even if neither count is zero.
+
+## 3. Logistic Regression for Spam Email
+
+We now apply the uncertainty calculations to a coefficient estimated
+numerically with `glm()`. We use the `spam7` data from
+the DAAG package, supplied as a CSV: 4,601 emails, including 1,813 spam
+emails. Each row represents one email.
+
+For this lab we explicitly choose $x=\log(\texttt{crl.tot})$.
+`crl.tot` is the **total** length of uninterrupted sequences of capital
+letters in an email. This transformation specifies the slope we are
+estimating: change in log-odds per unit increase in log total
+capital-run length.
+
+```{r read-spam}
+spam7 <- read.csv("spam7.csv", stringsAsFactors = FALSE)
+stopifnot(nrow(spam7) == 4601, !anyNA(spam7),
+          all(spam7$crl.tot > 0), all(spam7$yesno %in% c("n", "y")))
+spam7$y <- as.integer(spam7$yesno == "y")  # 1 = spam, 0 = not spam
+spam7$x <- log(spam7$crl.tot)
+head(spam7[, c("crl.tot", "yesno", "x", "y")])
+table(spam7$yesno)
+```
+
+### Specify and fit the model
+
+Assume independent emails with conditional model
+$$
+Y_i\mid X_i=x_i\sim\mathrm{Bernoulli}(p(x_i)),\qquad
+\log\left(\frac{p(x)}{1-p(x)}\right)=\beta_0+\beta_1x.
+$$
+Equivalently, $p(x)=1/\{1+e^{-(\beta_0+\beta_1x)}\}$.
+The log-odds, rather than the probability itself, are linear in $x$.
+The coefficients are estimated by maximizing the conditional
+log-likelihood
+$$
+L(\beta_0,\beta_1)
+=\sum_{i=1}^n\left[y_i\log p(x_i)+(1-y_i)\log\{1-p(x_i)\}\right].
+$$
+`glm()` carries out the numerical fitting. The formula is response on
+the left of `~`, predictor on the right; an intercept is included by
+default. `binomial(link = "logit")` specifies the logistic model.
+
+```{r fit-logistic}
+spam_fit <- glm(y ~ x, data = spam7, family = binomial(link = "logit"))
+stopifnot(spam_fit$converged, all(is.finite(coef(spam_fit))))
+coefficient_table <- summary(spam_fit)$coefficients[, 1:2, drop = FALSE]
+knitr::kable(coefficient_table, digits = 4)
+beta1_hat <- unname(coef(spam_fit)["x"])
+se_glm <- coefficient_table["x", "Std. Error"] 
+```
+
+The first column contains estimates; the second contains estimated
+standard errors. For a one-unit increase in $x$, the model's log-odds
+increase by $\beta_1$ and its odds multiply by $e^{\beta_1}$.
+Since $x$ is a natural logarithm, doubling `crl.tot` increases $x$ by
+$\log2$, so the odds multiply by $e^{\beta_1\log2}=2^{\beta_1}$.
+This is an association in the fitted model, not a causal claim.
+
+**Quick checkpoint 7:** Is $\widehat\beta_1$ the increase in spam
+probability for a one-unit increase in $x$? On which scale is the
+increase constant?
+
+```{r fitted-probabilities}
+# For a readable plot, group observations into ten ranges of x.
+bin <- cut(spam7$x, breaks = 10, include.lowest = TRUE)
+bin_means <- aggregate(cbind(x, y) ~ bin, data = spam7, FUN = mean)
+x_grid <- seq(min(spam7$x), max(spam7$x), length.out = 300)
+p_grid <- predict(spam_fit, newdata = data.frame(x = x_grid),
+                  type = "response")
+plot(x_grid, p_grid, type = "l", lwd = 2, col = "steelblue",
+     ylim = c(0, 1), xlab = "log(total capital-run length)",
+     ylab = "Probability of spam", main = "Fitted Logistic Curve")
+points(bin_means$x, bin_means$y, pch = 19, col = "firebrick")
+legend("topleft", c("Fitted probability", "Observed proportion in bin"),
+       col = c("steelblue", "firebrick"), lty = c(1, NA),
+       pch = c(NA, 19), bty = "n")
+```
+
+`type = "response"` requests probabilities; the default prediction
+scale for this model is log-odds. The red points are descriptive bin
+averages, not independent datasets, and bins can contain very different
+numbers of emails. Systematic departures from the blue curve suggest
+that a linear log-odds model may be too simple.
+
+### Asymptotic confidence intervals from the fit
+
+Using the estimated SE supplied by `glm()`, construct a normal/Wald
+interval for each coefficient. The SE calculation accounts for estimating
+the intercept and slope together. Its derivation is beyond this lab;
+we use the same estimate-plus-or-minus-critical-value-times-SE structure
+as in Lab 6.
+
+```{r glm-confidence-intervals}
+estimates <- coef(spam_fit)
+glm_se <- coefficient_table[, "Std. Error"]
+wald_all <- cbind(
+  lower = estimates - qnorm(0.975) * glm_se,
+  upper = estimates + qnorm(0.975) * glm_se
+)
+knitr::kable(wald_all, digits = 4)
+ci_glm <- unname(wald_all["x", ])
+
+```
+
+
+## 4. Bootstrap Confidence Intervals for the Slope
+
+We now estimate uncertainty in $\widehat\beta_1$ by repeatedly refitting
+the model to resampled datasets. Treat the observed pairs $(x_i,y_i)$
+as an iid sample from a population of emails. The nonparametric
+**pairs bootstrap** samples whole rows with replacement, preserving
+the predictor-response relationship within each email.
+
+This treats predictors as random along with responses. It differs
+from keeping all $x_i$ fixed and generating new Bernoulli responses
+from the fitted model, which would be a parametric bootstrap.
+
+**Quick checkpoint 8:** Why would sampling the `x` and `y` columns
+independently fail to reproduce the relationship we are trying to estimate?
+
+### First examine one bootstrap sample
+
+```{r one-bootstrap-sample}
+set.seed(135082)
+n_spam <- nrow(spam7)
+index <- sample.int(n_spam, size = n_spam, replace = TRUE)
+spam_star <- spam7[index, ]
+c(original_rows = n_spam, bootstrap_rows = nrow(spam_star),
+  distinct_original_rows = length(unique(index)))
+
+fit_star <- glm(y ~ x, data = spam_star, family = binomial())
+c(original_slope = beta1_hat,
+  bootstrap_slope = unname(coef(fit_star)["x"]))
+```
+
+Some original rows appear more than once and some do not appear at all.
+Each resample still contains $n$ rows. The star in
+$\widehat\beta^*_{1,(b)}$ denotes the slope estimated from resample $b$.
+
+**Quick checkpoint 9:** If we drew $n$ rows without replacement, how
+would the fitted slope vary across resamples?
+
+### Repeat the procedure
+
+We use $B=2000$ resamples. You can use 200 for a quick trial, then
+restore 2000 for the final comparison. Larger $B$ reduces Monte Carlo
+noise in our bootstrap summaries; it does not add independent emails.
+This chunk can take a little time because it fits $B$ logistic models.
+
+```{r bootstrap-slopes}
+set.seed(135083)
+B <- 2000
+beta1_star <- numeric(B)
+
+for (b in seq_len(B)) {
+  index <- sample.int(n_spam, size = n_spam, replace = TRUE)
+  fit_b <- glm(y ~ x, data = spam7[index, ], family = binomial())
+  if (!fit_b$converged || any(!is.finite(coef(fit_b)))) {
+    stop(paste("Inspect the logistic fit in bootstrap resample", b))
+  }
+  beta1_star[b] <- unname(coef(fit_b)["x"])
+}
+
+boot_mean <- mean(beta1_star)
+boot_bias <- boot_mean - beta1_hat
+se_boot <- sd(beta1_star)
+c(original_estimate = beta1_hat, bootstrap_mean = boot_mean,
+  estimated_bias = boot_bias, bootstrap_SE = se_boot, glm_SE = se_glm)
+```
+
+Warnings are intentionally visible. In other datasets, separation
+(a predictor perfectly distinguishing the response groups) can prevent
+a finite logistic MLE. Convergence checks are useful but do not rule
+out every fitting problem. Investigate warnings or extreme estimates;
+do not silently discard failed fits and interpret the remainder as the
+original bootstrap experiment.
+
+Following the bootstrap notation in the course, define
+$$
+\overline{\beta_1^*}=\frac1B\sum_{b=1}^B\widehat\beta^*_{1,(b)},
+\qquad
+\widehat{\mathrm{bias}}=\overline{\beta_1^*}-\widehat\beta_1,
+$$
+$$
+\mathrm{SE}_{\mathrm{boot}}
+=\sqrt{\frac1{B-1}\sum_{b=1}^B
+\left(\widehat\beta^*_{1,(b)}-\overline{\beta_1^*}\right)^2}.
+$$
+We want the spread of the resampled **estimates**. We therefore use
+`sd(beta1_star)`, without dividing by $\sqrt B$. Conditional on the
+observed data, that division would instead estimate the Monte Carlo SE
+of the average of our bootstrap estimates.
+
+```{r bootstrap-histograms, fig.width=8, fig.height=4}
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+hist_height <- max(hist(beta1_star, breaks = 35, plot = FALSE)$density)
+hist(beta1_star, breaks = 35, probability = TRUE,
+     ylim = c(0, 1.35 * hist_height),
+     col = "gray85", border = "white", main = "Bootstrap Slopes",
+     xlab = expression(hat(beta)[1]^"*"))
+abline(v = beta1_hat, col = "firebrick", lwd = 2)
+curve(dnorm(x, mean = beta1_hat, sd = se_boot),
+      add = TRUE, col = "steelblue", lwd = 2, lty = 2)
+legend("topright", c("Original estimate", "Normal approximation"),
+       col = c("firebrick", "steelblue"), lty = c(1, 2),
+       lwd = 2, bty = "n", cex = 0.75)
+
+delta_star <- beta1_star - beta1_hat
+hist(delta_star, breaks = 35, probability = TRUE,
+     col = "gray85", border = "white", main = "Centered Bootstrap Errors",
+     xlab = expression(hat(beta)[1]^"*" - hat(beta)[1]))
+abline(v = 0, col = "firebrick", lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+The two panels contain the same simulated estimates on shifted scales.
+The centered quantity $\widehat\beta_1^*-\widehat\beta_1$ approximates
+the sampling error $\widehat\beta_1-\beta_1$. The histogram of uncentered
+estimates is not a probability distribution for the fixed unknown
+parameter $\beta_1$.
+
+**Quick checkpoint 10:** If we change $B$ from 2000 to 8000 while keeping
+the observed data fixed, should our estimated sampling SE become half
+as large? Why or why not?
+
+### Construct three bootstrap intervals
+
+Let $q_a^*$ be the empirical $a$-quantile of the bootstrap slopes.
+For 95% intervals, use $a=0.025$ and $a=0.975$.
+
+The **percentile interval** uses the bootstrap quantiles directly:
+$$
+(q_{0.025}^*,q_{0.975}^*).
+$$
+For the **basic (pivotal) interval**, approximate the distribution of
+$\widehat\beta_1-\beta_1$ with that of
+$\delta^*=\widehat\beta_1^*-\widehat\beta_1$.
+Its quantiles are $q_a^*-\widehat\beta_1$. Solving the error inequalities
+for $\beta_1$ gives
+$$
+\left(2\widehat\beta_1-q_{0.975}^*,\;
+      2\widehat\beta_1-q_{0.025}^*\right).
+$$
+The order reverses: the upper bootstrap quantile gives the lower
+endpoint of the basic interval.
+
+The **normal interval with bootstrap SE**, as in the course module, is
+$$
+\widehat\beta_1\ \pm\ z_{0.975}\mathrm{SE}_{\mathrm{boot}}.
+$$
+It uses approximate normality and negligible bias relative to the SE.
+We do not subtract an estimated bias in this version.
+
+```{r compare-intervals}
+q_star <- unname(quantile(beta1_star, probs = c(0.025, 0.975)))
+ci_percentile <- q_star
+ci_basic <- 2 * beta1_hat - rev(q_star)
+ci_normal <- beta1_hat + c(-1, 1) * qnorm(0.975) * se_boot
+
+intervals <- rbind(
+  "GLM Wald" = ci_glm,
+  "Bootstrap percentile" = ci_percentile,
+  "Bootstrap basic" = ci_basic,
+  "Bootstrap normal" = ci_normal
+)
+colnames(intervals) <- c("Lower", "Upper")
+comparison <- data.frame(
+  Method = rownames(intervals),
+  Estimate = beta1_hat,
+  Lower = intervals[, "Lower"],
+  Upper = intervals[, "Upper"],
+  Width = intervals[, "Upper"] - intervals[, "Lower"],
+  row.names = NULL
+)
+knitr::kable(comparison, digits = 4)
+```
+
+```{r plot-intervals, fig.height=3.5}
+positions <- rev(seq_len(nrow(intervals)))
+par(mar = c(4, 10, 3, 1))
+plot(range(intervals), range(positions) + c(-0.4, 0.4), type = "n",
+     yaxt = "n", ylab = "", xlab = expression(beta[1]),
+     main = "95% Confidence Intervals for the Slope")
+axis(2, at = positions, labels = rownames(intervals), las = 1)
+segments(intervals[, 1], positions, intervals[, 2], positions,
+         lwd = 3, col = "steelblue")
+points(rep(beta1_hat, nrow(intervals)), positions, pch = 19)
+abline(v = beta1_hat, lty = 2, col = "gray50")
+```
+
+Read the widths and centers together with the bootstrap histograms.
+The percentile and basic intervals always have the same width, but
+their centers can differ. They coincide when the two bootstrap
+quantiles are symmetric about the observed estimate.
+
+The GLM SE uses the assumed logistic model. The pairs bootstrap estimates
+variation by resampling the observed joint distribution of predictor
+and response. These calculations need not agree, especially if the
+model is a poor description of the data. Under a correctly specified
+model and suitable large-sample conditions, agreement is reasonable.
+An interval being narrower does not establish better coverage or
+greater efficiency; efficiency compares estimators under a specified
+model, not simply the widths of different interval formulas.
+
+**Quick checkpoint 11:** Suppose the bootstrap distribution is symmetric
+about a point slightly above $\widehat\beta_1$. Must the percentile and
+basic intervals coincide? Which center matters?
+
+The bootstrap does not fix dependence between emails, an unrepresentative
+sample, or a misspecified scientific interpretation. Here we use an
+iid-email analysis for practice. All four intervals are approximate;
+this one observed dataset cannot tell us their actual repeated-sample
+coverage.
+
+
+
+
+
+### Data reference
+
+The supplied CSV contains all seven original columns and all 4,601 rows
+of `DAAG::spam7`, without filtering. Data origin: George Forman,
+Hewlett-Packard Laboratories, via the UCI Spambase dataset.
+See the [DAAG package data documentation](https://github.com/cran/DAAG/blob/master/man/spam7.Rd). 
+
+
+## Attendance Question: Asymptotic Distribution of Log Sample Mean
+
+Suppose $X_1,\ldots,X_n$ are iid with mean $\mu>0$ and variance
+$0<\sigma^2<\infty$. Find the asymptotic distribution of $\log(\bar X)$.
+
+**Answer:** By the central limit theorem,
+$$
+\sqrt n(\bar X-\mu)\xrightarrow{D}N(0,\sigma^2).
+$$
+
+Apply the delta method with $g(x)=\log x$. This function is
+differentiable at $\mu>0$, with
+$$
+g'(\mu)=\frac1\mu.
+$$
+
+Therefore,
+$$
+\boxed{
+\sqrt n\{\log(\bar X)-\log\mu\}
+\xrightarrow{D}
+N\left(0,\frac{\sigma^2}{\mu^2}\right).
+}
+$$
+
+Equivalently, for large $n$, the normal approximation is
+$$
+\log(\bar X)\ \dot\sim\
+N\left(\log\mu,\frac{\sigma^2}{n\mu^2}\right).
+$$
+
+The derivative is squared when calculating the asymptotic variance.
+The approximating normal mean is $\log\mu$; this does not assert that
+$E[\log(\bar X)]=\log\mu$ exactly.
+
+**Domain condition:** The logarithm requires $\bar X>0$. If the
+observations are strictly positive, this holds automatically.
+More generally, $\mu>0$ and the WLLN imply $P(\bar X>0)\to1$;
+assigning any finite value on the exceptional event $\bar X\leq0$
+does not change the limiting distribution.
