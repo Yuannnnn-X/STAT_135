@@ -1,0 +1,104 @@
+---
+title: "STAT 135 HW6 R Calculations"
+author: "Yuan Xie"
+format: pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+```
+
+# 1. Problem 5.8
+
+## data import
+```{r}
+students <- read_table("Students.dat.txt")
+head(students)
+```
+
+## (a)
+```{r}
+# Extract political ideology data
+x <- na.omit(students$ideol)
+
+# Sample statistics
+n <- length(x)
+x_bar <- mean(x)
+s <- sd(x)
+
+# Standard error
+SE <- s / sqrt(n)
+
+# Hypotheses
+# H0: mu = 4
+# Ha: mu != 4
+mu_0 <- 4
+alpha <- 0.05
+
+# Calculate t-statistic
+df <- n - 1
+t_stat <- (x_bar - mu_0) / SE
+
+# Calculate two-sided P-value
+p_value <- 2 * pt(-abs(t_stat), df = df)
+
+# Hypothesis test conclusion
+cat("Sample size:", n, "\n")
+cat("Sample mean:", x_bar, "\n")
+cat("Sample SD:", s, "\n")
+cat("Standard error:", SE, "\n")
+cat("t-statistic:", t_stat, "\n")
+cat("Degrees of freedom:", df, "\n")
+cat("P-value:", p_value, "\n")
+
+if (p_value < alpha) {
+  cat("Reject H0 at alpha = 0.05.\n")
+  cat("The population mean differs significantly from 4.\n")
+} else {
+  cat("Fail to reject H0 at alpha = 0.05.\n")
+  cat("Insufficient evidence that the mean differs from 4.\n")
+}
+
+```
+
+## (b) 
+```{r}
+# Calculate critical value
+t_critical <- qt(1 - alpha / 2, df = df)
+
+# Calculate confidence interval
+lower <- x_bar - t_critical * SE
+upper <- x_bar + t_critical * SE
+
+# Display confidence interval
+cat("Critical t-value:", t_critical, "\n")
+cat("95% CI: (", lower, ",", upper, ")\n")
+
+# Compare with hypothesis test
+if (mu_0 < lower || mu_0 > upper) {
+  cat("4 is outside the 95% CI.\n")
+  cat("This agrees with rejecting H0 in part (a).\n")
+} else {
+  cat("4 is inside the 95% CI.\n")
+  cat("This agrees with failing to reject H0 in part (a).\n")
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
