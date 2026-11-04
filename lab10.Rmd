@@ -1,0 +1,584 @@
+---
+title: "Hypothesis Testing: Exact Tests, Wald Asymptotics, and Simulations"
+author: "STAT 135 Fall 2026"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 4.8,
+  fig.align = "center"
+)
+set.seed(1352026)
+```
+
+# Hypothesis Testing
+
+In statistical inference, hypothesis testing evaluates whether observed sample data are consistent with an assumed baseline data-generating model. We first specify a model that we think might have generated the data, called the **null hypothesis** ($H_0$), and calculate the probability of observing differences as extreme as those seen in our sample due purely to random variation. If that probability is sufficiently small, we conclude that the sample contradicts the null hypothesis and reject our initial assumption.
+
+## Definitions
+
+- **Null Hypothesis ($H_0$):** A default theory or baseline feature of the population model that we evaluate against sample evidence (e.g., $H_0: \pi = 0.5$, $H_0: \mu_X - \mu_Y = 0$, or $H_0: \beta_1 = 0$).
+- **Alternative Hypothesis ($H_1$ or $H_A$):** The competing state of reality formalized in the Neyman-Pearson paradigm, representing the departure or effect of interest.
+- **Test Statistic ($T$ and $T_0$):** A function of the data whose sampling distribution under $H_0$ is known either exactly or asymptotically. 
+  - Following course convention, we standardize our sample estimate by dividing by its standard error and take the absolute value so that large positive values of $T_0$ reflect departures in *either* direction:
+    $$T_0 = \frac{|\hat{\theta} - \theta_0|}{\widehat{\text{SE}}(\hat{\theta})}$$
+  - Standardizing places test statistics onto an interpretable common scale (such as standard normal or Student-$t$).
+- **p-value:** The probability, computed under the assumption that the null hypothesis is true, of observing a test statistic as extreme as, or more extreme than, the value $t_{\text{obs}}$ actually observed in our sample:
+  $$\text{p-value} = P_{H_0}(T_0 \ge t_{\text{obs}})$$
+  - P-values are always defined with a "$\ge$" inequality, ensuring that discrete probability mass at the observed sample point is properly included.
+  - Developed originally by Fisher, the p-value serves as a continuous measure of evidence against the null.
+- **Decision Rules & Critical Value ($c$):** Neyman and Pearson formalized testing as an actionable decision rule:
+  $$\begin{cases} \text{Reject } H_0 & \text{if } T_0 > c \\ \text{Do not reject } H_0 & \text{if } T_0 \le c \end{cases}$$
+  The cutoff $c$ is chosen *before* observing any data, is non-random, and is called the **critical value** of the test.
+- **Rejection Region:** The subset of sample data outcomes that leads to the rejection of $H_0$.
+- **Significance Level ($\alpha$):** The probability of committing a Type I error under the null distribution:
+  $$\alpha = P_{H_0}(\text{Reject } H_0) = P_{H_0}(T_0 > c)$$
+  When $T_0 > c$, we say that we "reject the null hypothesis at level $\alpha$" or that the observed result "is significant at level $\alpha$".
+
+| Reality / Decision | Reject $H_0$ (Positive Result) | Do Not Reject $H_0$ (Negative Result) |
+|:-------------------|:-------------------------------|:--------------------------------------|
+| **$H_0$ is True** | **Type I Error** (False Positive, prob. $\alpha$) | Correct Decision (prob. $1 - \alpha$) |
+| **$H_0$ is False** | Correct Decision (**Power**, prob. $1 - \beta$) | **Type II Error** (False Negative, prob. $\beta$) |
+
+While there are four combinations, evaluating test quality simplifies to three possible outcomes: $(\text{CORRECT}, \text{Type I Error}, \text{Type II Error})$.
+
+> **Important Wording:** Do not use the phrase "accept the null". Failing to reject $H_0$ does not imply that the null hypothesis is true; it merely indicates that the observed sample lacks sufficient statistical evidence to contradict it. Instead, state that we **"do not reject the null"** or that **"the data are compatible with the null"**.
+
+> **Question:** A study testing a new drug against a placebo reports a p-value of $p = 0.24$. A student remarks: "This proves the drug has no effect, and there is a 76% chance the null hypothesis is true." How would you correct this interpretation using the definition of a p-value?
+
+> **Question:** If we lower our significance threshold from $\alpha = 0.05$ to $\alpha = 0.01$ without altering the sample size $n$, what happens to the critical value $c$, the rejection region, and the power ($1 - \beta$) of our test?
+
+---
+
+## Wald Tests, Score Tests, and Duality with Confidence Intervals
+
+### Wald Test vs. Score Test
+
+For an estimator $\hat{\theta}$ with large-sample normal distribution $\hat{\theta} \sim N(\theta, \text{Var}(\hat{\theta}))$ as $n \rightarrow \infty$:
+
+- **Wald Test Statistic:** Plugs the MLE $\hat{\theta}$ into the Fisher information to estimate the standard error:
+  $$T_{\text{Wald}} = \frac{|\hat{\theta} - \theta_0|}{\widehat{\text{SE}}(\hat{\theta})} = \frac{|\hat{\theta} - \theta_0|}{\sqrt{1 / I_n(\hat{\theta})}} \xrightarrow{D} |N(0, 1)| \quad \text{under } H_0 \text{ as } n \to \infty$$
+- **Score Test Statistic:** Evaluates the standard error under the null parameter $\theta_0$ directly:
+  $$T_{\text{Score}} = \frac{|\hat{\theta} - \theta_0|}{\text{SE}(\theta_0)} = \frac{|\hat{\theta} - \theta_0|}{\sqrt{1 / I_n(\theta_0)}} \xrightarrow{D} |N(0, 1)| \quad \text{under } H_0 \text{ as } n \to \infty$$
+  In simple models (such as testing binomial proportions $H_0: \pi = \pi_0$), the score test divides by $\sqrt{\pi_0(1-\pi_0)/n}$, while the Wald test divides by $\sqrt{\hat{\pi}(1-\hat{\pi})/n}$.
+
+### Duality Between Confidence Intervals and Hypothesis Tests
+
+Every $100(1-\alpha)\%$ confidence interval corresponds to an $\alpha$-level hypothesis test, and every $\alpha$-level test corresponds to a confidence interval:
+
+1. **Constructing a CI from a Test:** The collection of all null values $\theta_0$ that would **not** be rejected at level $\alpha$ forms a $100(1-\alpha)\%$ confidence region:
+   $$C(X) = \{\theta_0: \text{Do not reject } H_0: \theta = \theta_0\}$$
+2. **Constructing a Test from a CI:** To test $H_0: \theta = \theta_0$ at level $\alpha$, reject $H_0$ if $\theta_0 \notin C(X)$, and do not reject if $\theta_0 \in C(X)$.
+
+A confidence interval is most informative because it displays the entire set of parameter values compatible with the data, whereas a p-value evaluates only a single isolated null point, and a binary decision discards the magnitude of evidence entirely.
+
+---
+
+# The Mechanics: Calculations from Scratch vs. Built-in Functions
+
+We revisit the real-data examples from Lab 6 and Lab 8, remaking the confidence interval quantities into exact $t$-tests and large-sample Wald tests.
+
+## Section 6: Paired Data Exact $t$-Test
+
+From Rice Section 11.3.1 (page 447), platelet aggregation was measured on $n = 11$ individuals before and after smoking a cigarette. Let $D_i = \text{After}_i - \text{Before}_i$. We test whether smoking causes a non-zero mean change:
+$$H_0: \mu_D = 0 \quad \text{vs.} \quad H_1: \mu_D \neq 0$$
+
+Assuming independent, identically distributed normal differences $D_i \overset{\text{iid}}{\sim} N(\mu_D, \sigma_D^2)$:
+$$T_0 = \frac{|\bar{D} - 0|}{S_D / \sqrt{n}} \sim |t_{n-1}| \quad \text{under } H_0$$
+
+```{r paired_data_mechanics}
+if (file.exists("rice_p447_paired.csv")) {
+  paired <- read.csv("rice_p447_paired.csv")
+} else {
+  paired <- data.frame(
+    before = c(25, 25, 27, 44, 30, 67, 53, 53, 52, 60, 28),
+    after  = c(27, 29, 37, 56, 46, 82, 57, 80, 61, 59, 43)
+  )
+}
+
+# Differences
+d <- paired$after - paired$before
+n_pair <- length(d)
+alpha <- 0.05
+
+# 1. Calculations from scratch
+d_bar <- mean(d)
+sd_d  <- sd(d)
+se_d  <- sd_d / sqrt(n_pair)
+df_pair <- n_pair - 1
+
+# Standardized test statistic
+t_stat_scratch <- abs(d_bar - 0) / se_d
+
+# Critical value c = t_{alpha/2, nu}
+crit_val_pair <- qt(1 - alpha / 2, df = df_pair)
+
+# Two-sided p-value: 2 * (1 - F(t_obs))
+pval_scratch_pair <- 2 * (1 - pt(t_stat_scratch, df = df_pair))
+
+# 2. Built-in verification
+t_test_builtin <- t.test(paired$after, paired$before, paired = TRUE)
+
+res_paired <- data.frame(
+  Method         = c("From Scratch via qt/pt", "Built-in t.test()"),
+  Mean_Diff      = c(d_bar, unname(t_test_builtin$estimate)),
+  Std_Error      = c(se_d, unname(t_test_builtin$stderr)),
+  Test_Statistic = c(t_stat_scratch, unname(abs(t_test_builtin$statistic))),
+  Critical_Value = c(crit_val_pair, qt(0.975, df = t_test_builtin$parameter)),
+  P_Value        = c(pval_scratch_pair, t_test_builtin$p.value)
+)
+knitr::kable(res_paired, digits = 6, caption = "Paired t-test: 
+             From Scratch Quantiles vs. t.test()")
+```
+
+Since $t_{\text{obs}} = `r round(t_stat_scratch, 4)` > c = `r round(crit_val_pair, 4)`$ and $p = `r round(pval_scratch_pair, 5)` \le 0.05$, we reject $H_0$ at significance level $\alpha = 0.05$. The data are not compatible with the null hypothesis of no change.
+
+> **Question:** Why is the standard error computed on the within-person differences ($S_D / \sqrt{n} = 2.405$) so much smaller than the standard error obtained if we treat before and after as independent groups ($\hat{\text{SE}}_{\text{ind}} = 7.253$)? How does positive within-pair correlation $\text{Cor}(A, B) > 0$ affect the power of the paired test?
+
+---
+
+## Section 6: Regression Slope Exact $t$-Test
+
+Using $n = 2,930$ home sales in Ames, Iowa (De Cock, 2011), we model log sale price against log above-ground living area:
+$$Y_i = \log(\text{Sale\_Price}_i) = \beta_0 + \beta_1 \log(\text{Gr\_Liv\_Area}_i) + \epsilon_i, \quad \epsilon_i \overset{\text{iid}}{\sim} N(0, \sigma^2)$$
+
+We test whether living area is a statistically significant linear predictor of price:
+$$H_0: \beta_1 = 0 \quad \text{vs.} \quad H_1: \beta_1 \neq 0$$
+
+Under standard normal error assumptions:
+$$T_0 = \frac{|\hat{\beta}_1 - 0|}{\widehat{\text{SE}}(\hat{\beta}_1)} \sim |t_{n-2}| \quad \text{under } H_0$$
+
+```{r regression_slope_mechanics}
+ames <- read.csv("ames_area_price.csv")
+
+# Use lm() to fit the linear model
+fit_lm <- lm(log(Sale_Price) ~ log(Gr_Liv_Area), data = ames)
+n_reg <- nrow(ames)
+df_reg <- n_reg - 2
+
+# Extract quantities needed for test statistic
+b1_hat <- coef(fit_lm)["log(Gr_Liv_Area)"]
+se_b1  <- summary(fit_lm)$coefficients["log(Gr_Liv_Area)", "Std. Error"]
+
+# 1. Calculation from scratch using quantiles
+t_stat_reg <- unname(abs(b1_hat - 0) / se_b1)
+crit_val_reg <- qt(1 - alpha / 2, df = df_reg)
+pval_reg_scratch <- 2 * (1 - pt(t_stat_reg, df = df_reg))
+
+# 2. Built-in summary extraction
+summary_coefs <- summary(fit_lm)$coefficients["log(Gr_Liv_Area)", ]
+
+res_reg <- data.frame(
+  Method         = c("Scratch via qt/pt", "Built-in summary(lm)"),
+  Estimate       = c(b1_hat, summary_coefs["Estimate"]),
+  Std_Error      = c(se_b1, summary_coefs["Std. Error"]),
+  Test_Statistic = c(t_stat_reg, abs(summary_coefs["t value"])),
+  Critical_Value = c(crit_val_reg, qt(0.975, df = df_reg)),
+  P_Value        = c(pval_reg_scratch, summary_coefs["Pr(>|t|)"])
+)
+knitr::kable(res_reg, digits = 6, caption = "Regression Slope Test: Scratch vs. lm() Summary")
+```
+
+The test statistic $t_{\text{obs}} = `r round(t_stat_reg, 2)`$ far exceeds $t_{2928, 0.975} = 1.961$, yielding $p < 10^{-16}$. We reject $H_0$; living area is strongly predictive of price.
+
+> **Question:** In this log-log regression, $\beta_1$ represents price elasticity with respect to living area. How would you test whether home prices scale strictly proportionally with square footage ($H_0: \beta_1 = 1$ vs. $H_1: \beta_1 \neq 1$) using `b1_hat` and `se_b1`?
+
+---
+
+## Section 8: Logistic Regression Wald Test
+
+Using `DAAG::spam7` ($n = 4,601$ emails), we model spam status against log total capital-run length ($x = \log(\text{crl.tot})$):
+$$\log\left(\frac{p(x)}{1 - p(x)}\right) = \beta_0 + \beta_1 x$$
+
+We test whether uninterrupted capital letters are associated with spam:
+$$H_0: \beta_1 = 0 \quad \text{vs.} \quad H_1: \beta_1 \neq 0$$
+
+Using the asymptotic normality of the MLE:
+$$Z_W = \frac{|\hat{\beta}_1 - 0|}{\widehat{\text{SE}}(\hat{\beta}_1)} \xrightarrow{D} |N(0, 1)| \quad \text{under } H_0$$
+
+```{r logistic_wald_mechanics}
+spam7 <- read.csv("spam7.csv", stringsAsFactors = FALSE)
+
+spam7$y <- as.integer(spam7$yesno == "y")
+spam7$x <- log(spam7$crl.tot)
+
+# Fit logistic regression with glm()
+spam_fit <- glm(y ~ x, data = spam7, family = binomial(link = "logit"))
+
+# Extract coefficients and asymptotic SE
+b1_logistic <- coef(spam_fit)["x"]
+se_logistic <- summary(spam_fit)$coefficients["x", "Std. Error"]
+
+# 1. Calculation from scratch using standard normal quantiles
+z_stat_scratch <- unname(abs(b1_logistic - 0) / se_logistic)
+crit_val_wald  <- qnorm(1 - alpha / 2) # z_{alpha/2} = 1.95996
+pval_wald_scratch <- 2 * (1 - pnorm(z_stat_scratch))
+
+# 2. Built-in summary verification
+builtin_glm <- summary(spam_fit)$coefficients["x", ]
+
+res_logistic <- data.frame(
+  Method         = c("Scratch via qnorm/pnorm", "Built-in summary(glm)"),
+  Estimate       = c(b1_logistic, builtin_glm["Estimate"]),
+  Std_Error      = c(se_logistic, builtin_glm["Std. Error"]),
+  Test_Statistic = c(z_stat_scratch, abs(builtin_glm["z value"])),
+  Critical_Value = c(crit_val_wald, qnorm(0.975)),
+  P_Value        = c(pval_wald_scratch, builtin_glm["Pr(>|z|)"])
+)
+knitr::kable(res_logistic, digits = 6, caption = "Logistic Wald Test: Scratch vs. summary(glm)")
+```
+
+> **Question:** Notice that `summary(lm)` conducts a $t$-test with $n - 2$ degrees of freedom, whereas `summary(glm)` conducts a Wald $z$-test referenced against $N(0, 1)$. Why does the logistic regression output omit finite-sample degrees of freedom?
+
+---
+
+# Understanding Through Simulations
+
+## Simulations Under the Null: Type I Error and Uniform p-values
+
+We simulate $M = 5,000$ independent samples of size $n = 25$ under a true null hypothesis $H_0: \mu = 0$ with $X_i \overset{\text{iid}}{\sim} N(0, \sigma^2 = 4)$.
+
+```{r sim_null_ttest}
+set.seed(1351)
+M <- 5000
+n_sim <- 25
+mu_0 <- 0
+sigma_true <- 2
+alpha_nominal <- 0.05
+
+sim_null <- replicate(M, {
+  x <- rnorm(n_sim, mean = mu_0, sd = sigma_true)
+  x_bar <- mean(x)
+  s <- sd(x)
+  t_val <- abs(x_bar - mu_0) / (s / sqrt(n_sim))
+  p_val <- 2 * (1 - pt(t_val, df = n_sim - 1))
+  c(t_stat = t_val, p_val = p_val)
+})
+
+t_stats_null <- sim_null["t_stat", ]
+p_vals_null  <- sim_null["p_val", ]
+
+empirical_type1 <- mean(p_vals_null <= alpha_nominal)
+mc_se <- sqrt(empirical_type1 * (1 - empirical_type1) / M)
+```
+
+The empirical Type I error rate is **`r round(empirical_type1, 4)`** (Monte Carlo SE: `r round(mc_se, 4)`), closely matching nominal $\alpha = `r alpha_nominal`$.
+
+```{r plot_null_properties, fig.width=6.5, fig.height=3.4, out.width="100%"}
+par(mfrow = c(1, 2), mar = c(3.8, 3.8, 3.2, 0.8), mgp = c(2.2, 0.7, 0))
+
+# Histogram showing uniformity of p-values
+hist(p_vals_null, breaks = 20, probability = TRUE, col = "gray85", border = "white",
+     xlab = "p-value", main = "",
+     xlim = c(0, 1), ylim = c(0, 1.25),
+     cex.lab = 0.85, cex.axis = 0.85)
+title("Distribution of p-values under H0", line = 1.2, cex.main = 0.85)
+abline(h = 1, col = "firebrick", lwd = 2, lty = 2)
+abline(v = alpha_nominal, col = "steelblue", lwd = 2)
+text(alpha_nominal + 0.14, 1.15, paste("alpha =", alpha_nominal), 
+     col = "steelblue", cex = 0.8)
+
+# Empirical CDF vs. Uniform(0,1)
+plot(sort(p_vals_null), seq(1, M) / M, type = "l", lwd = 2, col = "darkgreen",
+     xlab = "p-value quantile", ylab = "Empirical CDF",
+     main = "",
+     cex.lab = 0.85, cex.axis = 0.85)
+title("Null p-value CDF vs. Uniform(0,1)", line = 1.2, cex.main = 0.85)
+abline(0, 1, col = "gray40", lty = 2, lwd = 1.5)
+legend("topleft", c("Empirical CDF", "Uniform(0, 1)"),
+       col = c("darkgreen", "gray40"), lty = c(1, 2), lwd = 2, bty = "n", cex = 0.8)
+
+par(mfrow = c(1, 1))
+```
+
+### Why are Null p-values Distributed Uniform(0, 1)?
+
+Let $T$ have continuous CDF $F_0$ under $H_0$, rejecting for large $T$. The p-value is the random variable $P = 1 - F_0(T)$. For any $u \in (0, 1)$:
+$$P_{H_0}(P \le u) = P_{H_0}(1 - F_0(T) \le u) = P_{H_0}(F_0(T) \ge 1 - u)$$
+By the Probability Integral Transform, $F_0(T) \sim \text{Uniform}(0, 1)$, which yields:
+$$P_{H_0}(F_0(T) \ge 1 - u) = 1 - (1 - u) = u$$
+Because its CDF is $F_P(u) = u$, the p-value is distributed as $\text{Uniform}(0, 1)$ under $H_0$. The probability of observing $P \le \alpha$ is therefore exactly $\alpha$.
+
+Moreover, by definition, a significance test is designed so that when the null hypothesis is true, you have a 5% chance of getting $p \le 0.05$, a 10% chance of getting $p \le 0.10$, and an $\alpha$ chance of getting $p \le \alpha$. Since the probability of landing below any cutoff $u$ is exactly $u$, the p-values must spread out completely evenly across $[0, 1]$ like a $\text{Uniform}(0, 1)$ distribution.   
+
+> **Question:** If the p-value distribution under $H_0$ is flat (Uniform), what shape does the p-value distribution take when the alternative hypothesis $H_1$ is true and the test has high statistical power?
+
+---
+
+## Attendance Question
+
+Suppose you are exploring the effect of eating fatty foods and whether test performance on STAT 135 exams the next day is improved. Suppose you have data on 50 possible fatty foods and 1 of them had a significant results (meaning eating the fatty foods changed exam performance)
+
+In light of the simulations you saw with the p-values, what concerns might you have?
+
+---
+
+## Power Under the Alternative: Varying Effect Size and Sample Size
+
+Power ($1 - \beta$) is the probability of correctly rejecting $H_0$ when the alternative is true. We simulate testing $H_0: \mu = 0$ across alternative means $\mu_A \in [0, 1.5]$ and sample sizes $n \in \{10, 30, 100\}$, with $\sigma = 2$ and $\alpha = 0.05$.
+
+```{r power_simulations}
+mu_seq <- seq(0, 1.5, length.out = 15)
+n_grid <- c(10, 30, 100)
+M_power <- 1500
+
+power_results <- expand.grid(mu = mu_seq, n = n_grid)
+power_results$empirical_power <- NA
+
+for (row_idx in seq_len(nrow(power_results))) {
+  curr_mu <- power_results$mu[row_idx]
+  curr_n  <- power_results$n[row_idx]
+  
+  p_vals <- replicate(M_power, {
+    x <- rnorm(curr_n, mean = curr_mu, sd = 2)
+    t_stat <- abs(mean(x) - 0) / (sd(x) / sqrt(curr_n))
+    2 * (1 - pt(t_stat, df = curr_n - 1))
+  })
+  
+  power_results$empirical_power[row_idx] <- mean(p_vals <= 0.05)
+}
+```
+
+```{r plot_power_sim, fig.width=6.5, fig.height=4.2, out.width="100%"}
+plot(NULL, xlim = c(0, 1.5), ylim = c(0, 1.05),
+     xlab = expression(paste("True Alternative Mean ", mu[A])),
+     ylab = "Power (1 - beta)",
+     main = "Power Curves as a Function of Effect Size and Sample Size")
+grid()
+abline(h = 0.05, col = "gray60", lty = 3)
+
+colors <- c("coral2", "steelblue", "darkgreen")
+for (i in seq_along(n_grid)) {
+  sub_df <- subset(power_results, n == n_grid[i])
+  lines(sub_df$mu, sub_df$empirical_power, col = colors[i], lwd = 2.5, type = "b", pch = 18 + i)
+}
+legend("bottomright", legend = paste("n =", n_grid), col = colors, pch = 19:21, lwd = 2, bty = "n")
+```
+
+At $\mu_A = 0$ (the null), power equals the Type I error rate $\alpha = 0.05$. As effect size $|\mu_A - \mu_0|$ or sample size $n$ increases, power approaches 1.
+
+> **Question:** For $n = 10$ and an effect size $\mu_A = 0.4$, power is approximately 15%. If a study in this regime reports $p > 0.05$, why is it misleading to state that "the treatment had no effect"?
+
+---
+
+## Theoretical Power Equation vs. Simulation Results
+
+To calculate the theoretical power for testing $H_0: \mu = \mu_0$ versus $H_1: \mu = \mu_A$ at level $\alpha$, we determine the probability of rejecting $H_0$ when the true population mean is $\mu_A$. 
+
+Under $H_1$, the sample mean satisfies $\bar{X} \sim N(\mu_A, \sigma^2/n)$. For a two-sided test, we reject $H_0$ when $|\bar{X} - \mu_0| \ge z_{\alpha/2} \frac{\sigma}{\sqrt{n}}$. Standardizing $\bar{X}$ under the true mean $\mu_A$ yields the **theoretical power formula**
+$$\begin{aligned}
+\text{Power}(\mu_A) &= P_{\mu_A}\left(\frac{\bar{X} - \mu_0}{\sigma/\sqrt{n}} \ge z_{\alpha/2} \quad \text{or} \quad \frac{\bar{X} - \mu_0}{\sigma/\sqrt{n}} \le -z_{\alpha/2}\right) \\
+&= \Phi\left(-z_{\alpha/2} + \frac{|\mu_A - \mu_0|}{\sigma / \sqrt{n}}\right) + \Phi\left(-z_{\alpha/2} - \frac{|\mu_A - \mu_0|}{\sigma / \sqrt{n}}\right)
+\end{aligned}$$
+
+For any distinct alternative $|\mu_A - \mu_0| > 0$, the second term corresponds to the extreme opposite tail and is practically negligible ($< 0.0001$), leaving $\Phi\left(-z_{\alpha/2} + \frac{|\mu_A - \mu_0|}{\sigma / \sqrt{n}}\right)$.
+
+```{r compare_power_theory}
+n_eval <- 30
+sigma_eval <- 2
+z_crit_eval <- qnorm(0.975) # 1.96 for alpha = 0.05
+se_eval <- sigma_eval / sqrt(n_eval)
+
+# Evaluate across a grid of alternative means
+mu_grid <- seq(0, 1.4, by = 0.1)
+
+# 1. Theoretical power calculation using the formula
+theoretical_power <- sapply(mu_grid, function(m) {
+  shift <- abs(m - 0) / se_eval
+  pnorm(-z_crit_eval + shift) + pnorm(-z_crit_eval - shift)
+})
+
+# 2. Simulated power from M = 2,000 datasets
+simulated_power <- sapply(mu_grid, function(m) {
+  p_vals <- replicate(2000, {
+    x <- rnorm(n_eval, mean = m, sd = sigma_eval)
+    t_stat <- abs(mean(x) - 0) / (sd(x) / sqrt(n_eval))
+    2 * (1 - pt(t_stat, df = n_eval - 1))
+  })
+  mean(p_vals <= 0.05)
+})
+
+comp_power <- data.frame(
+  Alternative_Mean = mu_grid,
+  Theoretical_Formula = theoretical_power,
+  Simulated_Power = simulated_power,
+  Difference = round(simulated_power - theoretical_power, 4)
+)
+
+knitr::kable(comp_power, digits = 4,
+             col.names = c("Alternative Mean (mu_A)", "Formula Power", "Simulated Power", "Difference"),
+             caption = "Power Comparison: Theoretical Normal Formula vs. Simulation (n = 30)")
+```
+
+```{r plot_theory_power, fig.width=6.5, fig.height=4.2, out.width="100%"}
+par(mar = c(4, 4, 3, 1), mgp = c(2.3, 0.7, 0))
+
+plot(mu_grid, theoretical_power, type = "l", lwd = 2.5, col = "steelblue",
+     xlab = expression(paste("True Alternative Mean ", mu[A])),
+     ylab = expression(paste("Power (", 1 - beta, ")")),
+     main = "", cex.lab = 0.9, cex.axis = 0.85)
+title("Theoretical Power Formula vs. Simulation (n = 30)", line = 1.3, cex.main = 0.95)
+points(mu_grid, simulated_power, col = "firebrick", pch = 19, cex = 1.1)
+grid()
+abline(h = 0.05, col = "gray60", lty = 3)
+
+legend("bottomright", 
+       legend = c("Theoretical Formula (Normal)", "Simulated (2,000 reps)"),
+       col = c("steelblue", "firebrick"), 
+       lty = c(1, NA), pch = c(NA, 19), lwd = 2, bty = "n", cex = 0.85)
+```
+
+---
+
+## Robustness to Non-Normality: Type I Error Under Misspecification
+
+The $t$-test assumes the sample comes from a normal population. Here, we evaluate whether the test still controls the Type I error rate at level $\alpha$ when the normality assumption fails. 
+
+We test whether the population mean equals its true value, $H_0: \mu = \mu_0$ versus $H_1: \mu \neq \mu_0$, using data generated under true nulls from two non-normal distributions:
+1. **Exponential Distribution ($\lambda = 1$):** Testing $H_0: \mu = 1$ (where true $\mu = 1$, $\sigma^2 = 1$). This distribution is strongly right-skewed.
+2. **Uniform Distribution ($U(0, 1)$):** Testing $H_0: \mu = 0.5$ (where true $\mu = 0.5$, $\sigma^2 = 1/12$). This distribution is non-normal but symmetric.
+
+Because $H_0$ is true in every simulation run, any rejection where $p \le \alpha$ is a Type I error. We evaluate the empirical Type I error across sample sizes $n \in \{5, 15, 30, 100, 500\}$ and significance levels $\alpha \in \{0.01, 0.05, 0.10\}$.
+
+```{r sim_non_normal}
+n_vec <- c(5, 15, 30, 100, 500)
+alpha_vec <- c(0.01, 0.05, 0.10)
+M_robust <- 5000
+
+run_sim_robust <- function(dist_type) {
+  res_list <- list()
+  for (n_curr in n_vec) {
+    p_vals <- replicate(M_robust, {
+      if (dist_type == "exponential") {
+        x <- rexp(n_curr, rate = 1)
+        mu_target <- 1
+      } else if (dist_type == "uniform") {
+        x <- runif(n_curr, min = 0, max = 1)
+        mu_target <- 0.5
+      }
+      t_stat <- abs(mean(x) - mu_target) / (sd(x) / sqrt(n_curr))
+      2 * (1 - pt(t_stat, df = n_curr - 1))
+    })
+    
+    errs <- sapply(alpha_vec, function(a) mean(p_vals <= a))
+    res_list[[as.character(n_curr)]] <- c(n = n_curr, errs)
+  }
+  df_res <- as.data.frame(do.call(rbind, res_list))
+  colnames(df_res) <- c("n", paste0("alpha_", alpha_vec))
+  return(df_res)
+}
+
+exp_results  <- run_sim_robust("exponential")
+unif_results <- run_sim_robust("uniform")
+```
+
+```{r display_robustness_tables}
+knitr::kable(exp_results, digits = 4, caption = "Type I Error for Skewed Null Data: Exponential(1)")
+knitr::kable(unif_results, digits = 4, caption = "Type I Error for Symmetric Null Data: Uniform(0, 1)")
+```
+
+- **Uniform (Symmetric):** The test maintains nominal Type I error even at small sample sizes ($n = 5$) because symmetry prevents skewness bias.
+- **Exponential (Skewed):** For $n = 5$, tail probabilities are distorted. However, for $n \ge 30$, the Central Limit Theorem stabilizes $\bar{X}$, and consistency ensures $S \xrightarrow{P} \sigma$, bringing empirical error rates to nominal levels.
+
+> **Question:** Why does symmetry in the underlying distribution protect the $t$-test even when sample size is small?
+
+---
+
+## Logistic Regression Asymptotics Under the Null
+
+We evaluate the finite-sample behavior of the Wald test for $H_0: \beta_1 = 0$ in logistic regression across $n \in \{15, 30, 100, 500, 2000\}$ with $\beta_0 = 0$ ($p = 0.5$) and $x_i \sim N(0, 1)$.
+
+```{r sim_logistic_null}
+n_logis_vec <- c(15, 30, 100, 500, 2000)
+M_logis <- 2500
+alpha_logis <- 0.05
+
+logistic_eval <- lapply(n_logis_vec, function(n_size) {
+  z_stats <- numeric(M_logis)
+  valid_count <- 0
+  
+  for (m in 1:M_logis) {
+    x <- rnorm(n_size, mean = 0, sd = 1)
+    y <- rbinom(n_size, size = 1, prob = 0.5)
+    
+    if (length(unique(y)) < 2) next
+    
+    fit <- suppressWarnings(glm(y ~ x, family = binomial))
+    if (fit$converged) {
+      valid_count <- valid_count + 1
+      se_val <- summary(fit)$coefficients["x", "Std. Error"]
+      z_stats[valid_count] <- coef(fit)["x"] / se_val
+    }
+  }
+  
+  z_valid <- z_stats[1:valid_count]
+  p_vals <- 2 * (1 - pnorm(abs(z_valid)))
+  
+  c(
+    n             = n_size,
+    converged_pct = (valid_count / M_logis) * 100,
+    type1_error   = mean(p_vals <= alpha_logis),
+    mean_z        = mean(z_valid),
+    sd_z          = sd(z_valid)
+  )
+})
+
+logistic_perf <- as.data.frame(do.call(rbind, logistic_eval))
+knitr::kable(logistic_perf, digits = 4,
+             col.names = c("n", "Converged (%)", "Empirical Type I Error", "Mean(Z)", "SD(Z)"),
+             caption = "Performance of Logistic Regression Wald Test Under H0 Across Sample Sizes")
+```
+
+```{r plot_logistic_asymptotics, fig.width=6.5, fig.height=3.4, out.width="100%"}
+par(mfrow = c(1, 2), mar = c(3.8, 3.8, 3.2, 0.8), mgp = c(2.2, 0.7, 0))
+
+# Small sample (n = 15)
+z_15 <- replicate(1500, {
+  x <- rnorm(15)
+  y <- rbinom(15, 1, 0.5)
+  if (length(unique(y)) < 2) return(NA)
+  fit <- suppressWarnings(glm(y ~ x, family = binomial))
+  if (!fit$converged) return(NA)
+  summary(fit)$coefficients["x", "z value"]
+})
+z_15 <- na.omit(z_15)
+
+hist(z_15, breaks = 30, probability = TRUE, col = "gray85", border = "white",
+     xlim = c(-4, 4), ylim = c(0, 0.45), xlab = "Wald z-statistic",
+     main = "Wald Z: n = 15 (Small)")
+curve(dnorm(x), add = TRUE, col = "firebrick", lwd = 2)
+
+# Large sample (n = 500)
+z_500 <- replicate(1500, {
+  x <- rnorm(500)
+  y <- rbinom(500, 1, 0.5)
+  fit <- glm(y ~ x, family = binomial)
+  summary(fit)$coefficients["x", "z value"]
+})
+
+hist(z_500, breaks = 30, probability = TRUE, col = "gray85", border = "white",
+     xlim = c(-4, 4), ylim = c(0, 0.45), xlab = "Wald z-statistic",
+     main = "Wald Z: n = 500 (Asymptotic)")
+curve(dnorm(x), add = TRUE, col = "firebrick", lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+### Insights on Asymptotic Wald Tests in Logistic Models
+
+1. **Small Sample Breakdown:**
+
+   - **Separation (Predictor Perfectly Distinguishing Outcome Groups):** In small samples, continuous predictors can occasionally partition binary outcomes perfectly, yielding unbounded MLE estimates ($\hat{\beta}_1 \to \pm \infty$) and unstable standard errors.
+   - **Standard Error Inflation with Strong Effects**: When an association is exceptionally strong (or near-separation occurs), the estimated standard error can grow much faster than the coefficient itself. This paradoxically drives the Wald statistic ($z = \hat{\beta}_1 / \widehat{\text{SE}}$) down toward zero, misleadingly suggesting that a strong predictor is statistically insignificant.
+   
+2. **Asymptotic Convergence:**
+
+   - The sampling distribution of $Z_W$ converges toward $N(0, 1)$, and the empirical Type I error aligns with $\alpha = 0.05$.
+   - In small binary datasets, the upcoming **Likelihood Ratio Test (LRT)** or exact permutation tests provide reliable error control where the Wald test breaks down.
+
+> **Question:** In Lab 8, we constructed confidence intervals for the log-odds $\tau = \log(\pi / (1 - \pi))$ and transformed the endpoints via `plogis()` to obtain an interval for the probability $\pi$. If we performed a Wald test on $H_0: \pi = 0.5$ versus on $H_0: \tau = 0$, would the test statistics and p-values be identical? Why does the choice of scale matter for a Wald test?
