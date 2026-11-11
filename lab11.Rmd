@@ -1,0 +1,532 @@
+---
+title: "STAT 135 — Lab 11"
+subtitle: "Likelihood Ratio Tests, the Pooled Two-Sample t-Test, and Permutation Tests"
+output:
+  pdf_document:
+    toc: false
+  html_document:
+    toc: false
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5, fig.align = "center")
+options(digits = 4)
+```
+
+## 1. Problem setup: comparing two group means
+
+The `Income.dat` dataset records annual income, years of education, and
+racial group for a sample of adults in the United States. Income is
+reported in thousands of US dollars; the race group codes are `B`
+(Black), `H` (Hispanic), and `W` (White).
+
+We focus on two groups:
+
+-   **Group X (Black):** 16 observations, coded `B`.
+
+-   **Group Y (Hispanic):** 14 observations, coded `H`.
+
+We will test whether there is a statistically significant difference in
+the population mean annual income between Black and Hispanic adults.
+
+**Problem statement.** Using the observed incomes for groups `B` and
+`H`, test whether their population mean annual incomes differ at the 5%
+significance level.
+
+Let $\mu_X$ and $\mu_Y$ denote the population mean annual incomes for
+the two groups, respectively.
+
+We wish to test
+
+$$
+H_0:\mu_X=\mu_Y
+\quad\text{versus}\quad
+H_a:\mu_X\neq\mu_Y
+$$
+
+at significance level $\alpha=0.05$.
+
+We will investigate this question using three approaches: a likelihood
+ratio test (LRT), a pooled two-sample $t$-test, and a permutation test.
+
+```{r read-data}
+source_file <- "https://stat4ds.rwth-aachen.de/data/Income.dat"
+data <- read.table(source_file, header = TRUE)
+x <- data$income[data$race == "B"]
+y <- data$income[data$race == "H"]
+nX <- length(x)
+nY <- length(y)
+N <- nX + nY
+table(data$race)
+```
+
+```{r group-summary}
+summary_by_group <- data |>
+  filter(race %in% c("B", "H")) |>
+  group_by(race) |>
+  summarise(
+    n = n(),
+    mean = mean(income),
+    median = median(income),
+    sd = sd(income)
+  )
+
+knitr::kable(summary_by_group, digits = 3)
+```
+
+```{r exploratory-plots, fig.width=7, fig.height=5.5, out.width="\\textwidth", fig.align="center"}
+
+par(mfrow = c(2, 2))
+
+# 1. Raw data
+stripchart(list(B = x, H = y),
+           method = "jitter", vertical = TRUE,
+           pch = 19, col = "steelblue",
+           main = "Raw Income Data",
+           xlab = "Group", ylab = "Income ($1,000s)")
+
+# 2. Boxplots
+boxplot(list(B = x, H = y),
+        col = "lightblue",
+        main = "Income by Group",
+        xlab = "Group", ylab = "Income ($1,000s)")
+
+# 3. Normal Q-Q plot for group 1
+qqnorm(x, main = "Normal Q-Q Plot: B")
+qqline(x, col = "red")
+
+# 4. Normal Q-Q plot for group 2
+qqnorm(y, main = "Normal Q-Q Plot: H")
+qqline(y, col = "red")
+
+```
+
+> **Discussion:** Are there outliers, skewness, or major differences in
+> spread?
+
+## 2. Likelihood ratio test (LRT)
+
+### 2.1 Model, hypotheses and dimensions
+
+Assume independent normal samples with *unknown but common* variance:
+
+$$
+X_1,\ldots,X_{n_X}\stackrel{\mathrm{iid}}{\sim}N(\mu_X,\sigma^2),\qquad
+Y_1,\ldots,Y_{n_Y}\stackrel{\mathrm{iid}}{\sim}N(\mu_Y,\sigma^2).
+$$
+
+Test
+
+$$
+H_0:\mu_X=\mu_Y\qquad\text{versus}\qquad H_a:\mu_X\ne\mu_Y.
+$$
+
+Denote the parameters as $\theta$: $\theta=(\mu_X,\mu_Y,\sigma^2)$. Then
+the full parameter space and the null parameter space are
+
+$$
+\begin{aligned}
+\Omega&=\{(\mu_X,\mu_Y,\sigma^2):\mu_X,\mu_Y\in\mathbb R,\ \sigma^2>0\},
+&\dim(\Omega)&=3,\\
+\omega_0&=\{(\mu,\mu,\sigma^2):\mu\in\mathbb R,\ \sigma^2>0\},
+&\dim(\omega_0)&=2.
+\end{aligned}
+$$
+
+### 2.2 Log-likelihood
+
+The log-likelihood is $$
+\ell(\mu_X,\mu_Y,\sigma^2)=
+-\frac N2\log(2\pi\sigma^2)-\frac{1}{2\sigma^2}\left[\sum_{i=1}^{n_X}(X_i-\mu_X)^2+\sum_{j=1}^{n_Y}(Y_j-\mu_Y)^2\right].
+$$
+
+### 2.3 MLEs
+
+We know that the unrestricted MLEs are $$
+\hat\mu_X=\bar X, \quad \hat\mu_Y=\bar Y, \quad\hat\sigma^2=\frac{1}{N}[\sum_{i=1}^{n_X}(X_i-\hat\mu_X)^2+\sum_{j=1}^{n_Y}(Y_j-\hat\mu_Y)^2].
+$$
+
+Under $H_0$ the data are fit with one common mean, so $$
+\hat\mu_0
+=\frac{n_X\bar X+n_Y\bar Y}{N},
+\quad\hat\sigma_0^2=\frac{1}{N}[\sum_{i=1}^{n_X}(X_i-\hat\mu_0)^2+\sum_{j=1}^{n_Y}(Y_j-\hat\mu_0)^2].
+$$
+
+```{r calculate-mles}
+mean_X <- mean(x)
+mean_Y <- mean(y)
+mean_0 <- mean(c(x, y))
+
+SSX <- sum((x - mean_X)^2)
+SSY <- sum((y - mean_Y)^2)
+sigma2_MLE_full <- (SSX + SSY) / N
+sigma2_MLE_null <- (sum((x - mean_0)^2) + sum((y - mean_0)^2)) / N
+
+mle_summary <- data.frame(
+  model = c("Full", "Null"),
+  mu_X = c(mean_X, mean_0),
+  mu_Y = c(mean_Y, mean_0),
+  sigma2 = c(sigma2_MLE_full, sigma2_MLE_null)
+)
+knitr::kable(mle_summary, 
+             digits = 4, 
+             caption = "MLEs in full parameter space and null parameter space")
+```
+
+### 2.4 Likelihood ratio statistic
+
+$$
+\begin{aligned}
+\Lambda
+&=2\left[\sup_{\theta\in\Omega}\ell(\theta)
+-\sup_{\theta\in\omega_0}\ell(\theta)\right]\\
+&=2\left[-\frac N2\log(2\pi\widehat\sigma^2)-\frac N2
+ +\frac N2\log(2\pi\widehat\sigma_0^2)+\frac N2\right]\\
+ &=N\log\left(\frac{\widehat\sigma_0^2}{\widehat\sigma^2}\right)
+\geq 0.
+\end{aligned}
+$$
+
+> **Discussion:** Why $\Lambda \ge 0$?
+
+### 2.5 Asymptotic $\chi^2$ inference
+
+Under regularity conditions and $H_0$, $\Lambda\xrightarrow{D}\chi^2_1$
+as sample sizes increase. Thus for significance level $\alpha=0.05$, the
+approximate critical value and p-value are $$
+c_{\alpha,\mathrm{asymp}}=\chi^2_{1,1-\alpha},\quad
+\text{asymptotic p-value}=P(\chi_1^2\ge\Lambda_{\rm obs}).
+$$
+
+```{r asymptotic-lrt}
+alpha <- 0.05
+lambda_obs <- N * log(sigma2_MLE_null / sigma2_MLE_full)
+p_LRT_asymp <- pchisq(lambda_obs, df = 1, lower.tail = FALSE)
+crit_val_LRT_asymp <- qchisq(1 - alpha, df = 1)
+
+c(LR_statistic = lambda_obs, p_value_asymptotic = p_LRT_asymp,
+  critical_value_asymp = crit_val_LRT_asymp)
+```
+
+The asymptotic p-value is about $0.4836$, which is **greater than**
+$\alpha=0.05$. Thus we **fail to reject** $H_0$. This does not establish
+that the two population means are equal.
+
+## 3. Pooled two-sample $t$-test
+
+Assume independent normal samples with *unknown but common* variance:
+
+$$
+X_1,\ldots,X_{n_X}\stackrel{\mathrm{iid}}{\sim}N(\mu_X,\sigma^2),\qquad
+Y_1,\ldots,Y_{n_Y}\stackrel{\mathrm{iid}}{\sim}N(\mu_Y,\sigma^2).
+$$ Define the pooled sample variance $$
+s_p^2 =
+\frac{(n_X-1)s_X^2+(n_Y-1)s_Y^2}{n_X+n_Y-2}.
+$$ The t-statistic is $$
+T=\frac{(\bar X-\bar Y)-0}{s_p\sqrt{1/n_X+1/n_Y}}.
+$$ Under $H_0$, $T\sim t_{N-2}$. Hence the critical value and p-value
+are $$
+c_{\alpha} = t_{N-2, 1-\alpha/2}, \qquad
+\text{p-value}=P_{H_0}(|T|\geq |t_{obs}|).
+$$
+
+```{r pooled-t-test}
+sp2 <- (SSX + SSY) / (N - 2)
+t_obs <- (mean_X - mean_Y) / sqrt(sp2 * (1 / nX + 1 / nY))
+df_t <- N - 2
+
+p_t_manual <- 2 * pt(-abs(t_obs), df = df_t)
+crit_val_t <- qt(1 - alpha / 2, df = df_t)
+
+c(t_statistic = t_obs,
+  p_value = p_t_manual, 
+  critical_value = crit_val_t)
+
+# The default t.test() uses Welch's test; we explicitly request pooled variance.
+t_test <- t.test(x, y, alternative = "two.sided", var.equal = TRUE)
+t_test
+```
+
+## 4. Relationship between the LRT and the pooled $t$-test
+
+For group $X$,
+
+$$
+\begin{aligned}
+\sum_{i=1}^{n_X}(X_i-\hat\mu_0)^2
+&=\sum_{i=1}^{n_X}\big[(X_i-\bar X)+(\bar X-\hat\mu_0)\big]^2\\
+&=\sum_{i=1}^{n_X}(X_i-\bar X)^2+n_X(\bar X-\hat\mu_0)^2.
+\end{aligned}
+$$
+
+Similarly for group $Y$,
+
+$$
+\begin{aligned}
+\sum_{i=1}^{n_Y}(Y_i-\hat\mu_0)^2
+&=\sum_{i=1}^{n_Y}(Y_i-\bar Y)^2+n_Y(\bar Y-\hat\mu_0)^2.
+\end{aligned}
+$$
+
+Hence
+
+$$
+\hat\sigma_0^2
+=
+\hat\sigma^2+
+\frac1N\left[
+n_X(\bar X-\hat\mu_0)^2
++n_Y(\bar Y-\hat\mu_0)^2
+\right].
+$$
+
+Now, using the definition of $\hat\mu_0$, $$
+\begin{aligned}
+\bar X-\hat\mu_0
+&=\bar X-\frac{n_X\bar X+n_Y\bar Y}{N}\\
+&=\frac{n_Y}{N}(\bar X-\bar Y).
+\end{aligned}
+$$ Likewise, $$
+\bar Y-\hat\mu_0
+=-\frac{n_X}{N}(\bar X-\bar Y).
+$$ Substituting,$$
+\begin{aligned}
+\hat\sigma_0^2
+&=\hat\sigma^2+
+\frac1N\left[
+n_X\frac{n_Y^2}{N^2}(\bar X-\bar Y)^2+
+n_Y\frac{n_X^2}{N^2}(\bar X-\bar Y)^2
+\right]\\[4pt]
+&=\hat\sigma^2+
+\frac{n_Xn_Y(n_X+n_Y)}{N^3}
+(\bar X-\bar Y)^2\\
+&=\hat\sigma^2+
+\frac{n_Xn_Y}{N^2}
+(\bar X-\bar Y)^2.
+\end{aligned}
+$$ Recall that the pooled two-sample $t$-statistic is $$
+T=\frac{\bar X-\bar Y}
+{s_p\sqrt{\frac1{n_X}+\frac1{n_Y}}},
+$$ where $$
+s_p^2=
+\frac{
+\sum_{i=1}^{n_X}(X_i-\bar X)^2+
+\sum_{j=1}^{n_Y}(Y_j-\bar Y)^2
+}{N-2}.
+$$
+
+Notice that $s_p^2$ and $\hat\sigma^2$ have the same numerator but
+different denominators. Therefore, $$
+\hat\sigma^2=\frac{N-2}{N}s_p^2.
+$$ Next, square the $t$-statistic: $$
+\begin{aligned}
+T^2
+&=\frac{(\bar X-\bar Y)^2}
+{s_p^2\left(\frac1{n_X}+\frac1{n_Y}\right)}\\[4pt]
+&=\frac{n_Xn_Y(\bar X-\bar Y)^2}{Ns_p^2}.
+\end{aligned}
+$$ Rearranging, $$
+\frac{n_Xn_Y}{N^2}(\bar X-\bar Y)^2
+=\frac{T^2s_p^2}{N}.
+$$ Substitute this into our expression for $\hat\sigma_0^2$: $$
+\begin{aligned}
+\hat\sigma_0^2
+&=\hat\sigma^2+\frac{T^2s_p^2}{N}\\[4pt]
+&=\frac{N-2}{N}s_p^2+\frac{T^2s_p^2}{N}\\[4pt]
+&=\frac{s_p^2}{N}(N-2+T^2).
+\end{aligned}
+$$
+
+Consequently, $$
+\begin{aligned}
+\frac{\hat\sigma_0^2}{\hat\sigma^2}
+&=\frac{\frac{s_p^2}{N}(N-2+T^2)}
+{\frac{N-2}{N}s_p^2}\\[4pt]
+&=\frac{N-2+T^2}{N-2}\\[4pt]
+&=1+\frac{T^2}{N-2}.
+\end{aligned}
+$$
+
+Recall that $$
+\Lambda=N\log\left(\frac{\hat\sigma_0^2}{\hat\sigma^2}\right).
+$$
+
+We obtain $$
+\Lambda=N\log\left(1+\frac{T^2}{N-2}\right).
+$$
+
+The function $$
+f(t)=N\log\left(1+\frac{t^2}{N-2}\right)
+$$ is strictly increasing in $|t|$ for $N>2$.
+
+Therefore, $$
+\Lambda\text{ is large}
+\iff |T|\text{ is large}.
+$$
+
+Both tests reject $H_0$ when the difference between the sample means is
+sufficiently large relative to the estimated standard error. Under the
+normal model and $H_0$,
+
+$$
+T\sim t_{N-2}.
+$$ Hence the exact p-value for the LRT can be calculated using the
+$t$-distribution:
+
+$$
+\text{p-value}=2P_{H_0}(T > |t_{\mathrm{obs}}|).
+$$ Equivalently, if only the observed LRT statistic
+$\lambda_{\mathrm{obs}}$ is known, we can recover
+
+$$
+|t_{\mathrm{obs}}|
+=
+\sqrt{(N-2)\left(e^{\lambda_{\mathrm{obs}}/N}-1\right)}.
+$$
+
+The exact level-$\alpha$ critical value for the LRT is
+
+
+$$
+c_\alpha
+=
+N\log\left(
+1+\frac{t_{N-2,\,1-\alpha/2}^2}{N-2}
+\right).
+$$
+
+
+Thus, the exact LRT and the two-sided pooled $t$-test produce identical
+p-values and rejection decisions. In contrast, the $\chi^2_1$
+approximation does *not* produce exactly the same finite-sample p-value
+or critical value.
+
+```{r verify-lrt-t}
+lambda_from_t <- N * log1p(abs(t_obs)^2 / (N - 2))
+
+# Transform the exact two-sided t critical value to the LRT scale
+crit_val_LRT_exact <- N * log1p(crit_val_t^2 / (N - 2))
+
+abs_t_from_Lambda <- sqrt((N - 2) * expm1(lambda_obs / N))
+stopifnot(isTRUE(all.equal(lambda_obs, lambda_from_t, tolerance = 1e-10)))
+p_LRT_exact <- 2 * pt(-abs_t_from_Lambda, df = df_t)
+
+comparison <- data.frame(
+  method = c("LRT, chi-squared approximation",
+             "LRT, exact t calibration",
+             "Pooled t-test, exact"),
+  statistic = c(lambda_obs, lambda_from_t, abs(t_obs)),
+  critical_value = c(crit_val_LRT_asymp, crit_val_LRT_exact, crit_val_t),
+  p_value = c(p_LRT_asymp, p_LRT_exact, p_t_manual)
+)
+knitr::kable(comparison, digits = 5)
+```
+
+Note that the first two rows use the **LRT statistic** while the last
+row uses $|T|$. Their critical values are therefore on different scales.
+The exact LRT calibration and the pooled $t$-test have identical
+p-values.
+
+## 5. Permutation test
+
+The normal-model LRT and pooled $t$-test rely on model assumptions for
+their reference distributions. A classical two-sample permutation test
+avoids a normality assumption, but it needs *exchangeability* under
+its null hypothesis.
+
+For two independent samples from distributions $F_X$ and $F_Y$, one
+sufficient permutation null hypothesis for this problem is
+
+$$
+H_0: F_X=F_Y.
+$$
+
+Under this stronger null, the pooled observations are identically distributed and the group labels are exchangeable. Conditional on the
+observed income values and the fixed sizes $n_X$ and $n_Y$, each allocation of
+$n_X$ entries to group `B` (and the remaining $n_Y$ to group `H`) is equally
+likely. This tests the stronger equality-of-distributions null, using a
+statistic sensitive to differences in means.
+
+*Notes*. The original question concerns equality of population *means*. Equality of means alone does not imply exchangeability or identical distributions. The classical label-permutation test is exact under the stronger exchangeability null, not automatically for an arbitrary means-only null.
+
+We use the absolute value of the pooled $t$-statistic,
+
+$$
+T_0=\frac{|\bar X-\bar Y|}{s_p\sqrt{1/n_X+1/n_Y}}.
+$$
+
+We keep income values fixed and redistribute the `B`/`H` labels, preserving
+the number in each group.
+
+```{r permutation-test}
+# Calculate the absolute pooled t-statistic for two vectors of incomes.
+abs_pooled_t <- function(a, b) {
+  na <- length(a)
+  nb <- length(b)
+  sse <- sum((a - mean(a))^2) + sum((b - mean(b))^2)
+  sp2_star <- sse / (na + nb - 2)
+  abs(mean(a) - mean(b)) / sqrt(sp2_star * (1 / na + 1 / nb))
+}
+
+z <- c(x, y)
+set.seed(135)
+B <- 10000
+t_perm <- replicate(B, {
+  # Choose nX of the N observed pooled entries WITHOUT replacement.
+  chosen <- sample.int(N, size = nX, replace = FALSE)
+  x_star <- z[chosen]
+  y_star <- z[-chosen]
+  abs_pooled_t(x_star, y_star)
+})
+
+p_perm <- mean(t_perm >= abs(t_obs))
+
+c(observed_abs_t = abs(t_obs),
+  extreme_permutations = sum(t_perm >= abs(t_obs)),
+  p = p_perm)
+```
+
+```{r permutation-histogram, fig.width=7, fig.height=5.5, out.width="\\textwidth", fig.align="center"}
+hist(t_perm, breaks = 45, freq = FALSE,
+     main = "Permutation null distribution of |t|",
+     xlab = "Absolute pooled t-statistic under shuffled labels",
+     col = "grey85", border = "white")
+abline(v = abs(t_obs), col = "firebrick", lwd = 2)
+legend("topright", legend = sprintf("Observed |t| = %.3f", abs(t_obs)),
+       col = "firebrick", lwd = 2, bty = "n")
+```
+
+```{r compare-permutation}
+
+crit_val_perm_approx <- unname(
+  quantile(t_perm, probs = 1 - alpha, type = 1)
+)
+
+comparison <- data.frame(
+  Method = c(
+    "Pooled t-test",
+    "LRT (asymptotic)",
+    "Permutation test"
+  ),
+  Statistic = c(abs(t_obs), lambda_obs, abs(t_obs)),
+  `p-value` = c(p_t_manual, p_LRT_asymp, p_perm),
+  `5% critical value` = c(
+    crit_val_t, crit_val_LRT_asymp, crit_val_perm_approx
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  comparison,
+  digits = 4,
+  booktabs = TRUE,
+  caption = "Comparison of hypothesis tests"
+)
+
+```
